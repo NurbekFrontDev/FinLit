@@ -3,7 +3,6 @@ import { MONTH_NAMES } from '../lib/db'
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const pad = (n: number) => String(n).padStart(2, '0')
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
 // Один календарь для выбора диапазона: первый клик — начало, второй — конец;
 // область между ними подсвечивается.
