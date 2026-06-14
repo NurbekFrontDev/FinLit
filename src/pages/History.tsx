@@ -1,10 +1,112 @@
+import { useEffect, useState } from 'react'
+import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
+import { formatSum, MONTH_NAMES } from '../lib/db'
+
+type MonthRow = {
+  id: string
+  year: number
+  month: number
+  planned_income: number
+}
+
+type Stat = { income: number; expense: number }
+
 export default function History() {
+  const { user } = useAuth()
+  const [months, setMonths] = useState<MonthRow[]>([])
+  const [stats, setStats] = useState<Record<string, Stat>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    ;(async () => {
+      try {
+        setLoading(true)
+        const [mRes, incRes, expRes] = await Promise.all([
+          supabase
+            .from('months')
+            .select('id, year, month, planned_income')
+            .eq('user_id', user.id)
+            .order('year', { ascending: false })
+            .order('month', { ascending: false }),
+          supabase.from('incomes').select('amount, month_id').eq('user_id', user.id),
+          supabase.from('expenses').select('amount, month_id').eq('user_id', user.id),
+        ])
+        if (!active) return
+        if (mRes.error) throw mRes.error
+        if (incRes.error) throw incRes.error
+        if (expRes.error) throw expRes.error
+
+        const map: Record<string, Stat> = {}
+        for (const r of (incRes.data ?? []) as { amount: number; month_id: string | null }[]) {
+          if (!r.month_id) continue
+          map[r.month_id] = map[r.month_id] ?? { income: 0, expense: 0 }
+          map[r.month_id].income += Number(r.amount)
+        }
+        for (const r of (expRes.data ?? []) as { amount: number; month_id: string | null }[]) {
+          if (!r.month_id) continue
+          map[r.month_id] = map[r.month_id] ?? { income: 0, expense: 0 }
+          map[r.month_id].expense += Number(r.amount)
+        }
+        setMonths((mRes.data ?? []) as MonthRow[])
+        setStats(map)
+      } catch (e) {
+        if (active) setError((e as Error).message)
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [user])
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-semibold">🗓️ История</h1>
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 text-neutral-400">
-        Архив по месяцам и график динамики появятся здесь. 🚧
-      </div>
+
+      {loading ? (
+        <p className="text-neutral-400">Загрузка…</p>
+      ) : error ? (
+        <p className="text-sm text-red-400">{error}</p>
+      ) : months.length === 0 ? (
+        <p className="text-sm text-neutral-500">Пока нет данных. Добавь доходы и расходы — месяцы появятся здесь.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {months.map((m) => {
+            const s = stats[m.id] ?? { income: 0, expense: 0 }
+            const balance = s.income - s.expense
+            return (
+              <div
+                key={m.id}
+                className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">
+                    {MONTH_NAMES[m.month - 1]} {m.year}
+                  </span>
+                  <span
+                    className={`text-sm ${
+                      balance >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}
+                  >
+                    {balance >= 0 ? '+' : ''}
+                    {formatSum(balance)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs text-neutral-400">
+                  <span>План: {formatSum(Number(m.planned_income))}</span>
+                  <span className="text-emerald-400/80">Доход: {formatSum(s.income)}</span>
+                  <span className="text-red-400/80">Расход: {formatSum(s.expense)}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
