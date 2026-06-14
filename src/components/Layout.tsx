@@ -1,0 +1,71 @@
+import { NavLink, Outlet } from 'react-router-dom'
+
+const navItems = [
+  { to: '/', label: 'Дашборд', icon: '🏠' },
+  { to: '/incomes', label: 'Доходы', icon: '💼' },
+  { to: '/expenses', label: 'Расходы', icon: '🧾' },
+  { to: '/budget', label: 'Бюджет', icon: '📊' },
+  { to: '/history', label: 'История', icon: '🗓️' },
+  { to: '/settings', label: 'Настройки', icon: '⚙️' },
+]
+
+export default function Layout() {
+  return (
+    <div className="min-h-screen md:flex">
+      {/* Боковое меню (десктоп) */}
+      <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:border-neutral-800 md:p-4">
+        <div className="mb-8 flex items-center gap-2 px-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-lg">
+            💰
+          </span>
+          <span className="text-lg font-semibold">FinLit</span>
+        </div>
+        <nav className="flex flex-col gap-1">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                  isActive
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : 'text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-100'
+                }`
+              }
+            >
+              <span>{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Контент */}
+      <main className="flex-1 pb-20 md:pb-0">
+        <div className="mx-auto max-w-3xl px-4 py-6">
+          <Outlet />
+        </div>
+      </main>
+
+      {/* Нижняя навигация (мобильный) */}
+      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-neutral-800 bg-neutral-950/95 backdrop-blur md:hidden">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) =>
+              `flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] transition ${
+                isActive ? 'text-emerald-400' : 'text-neutral-400'
+              }`
+            }
+          >
+            <span className="text-base">{item.icon}</span>
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  )
+}

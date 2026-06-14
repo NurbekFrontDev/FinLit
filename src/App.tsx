@@ -1,18 +1,46 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useAuth } from './lib/AuthContext'
+import Layout from './components/Layout'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Incomes from './pages/Incomes'
+import Expenses from './pages/Expenses'
+import Budget from './pages/Budget'
+import History from './pages/History'
+import Settings from './pages/Settings'
+
 function App() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500 text-3xl shadow-lg shadow-emerald-500/30">
-        💰
+  const { session, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-neutral-400">
+        Загрузка…
       </div>
-      <h1 className="text-3xl font-semibold tracking-tight">FinLit</h1>
-      <p className="max-w-sm text-neutral-400">
-        Личный помощник по финансам. Tailwind подключён —
-        изумрудный акцент работает. 🎉
-      </p>
-      <button className="rounded-lg bg-emerald-500 px-5 py-2.5 font-medium text-neutral-950 transition hover:bg-emerald-400">
-        Проверка кнопки
-      </button>
-    </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    )
+  }
+
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/incomes" element={<Incomes />} />
+        <Route path="/expenses" element={<Expenses />} />
+        <Route path="/budget" element={<Budget />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   )
 }
 
