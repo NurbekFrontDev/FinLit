@@ -1,15 +1,22 @@
 import { useEffect, useState } from 'react'
-import DatePicker from './DatePicker'
+import RangeCalendar from './RangeCalendar'
 import { formatDateHuman, MONTH_NAMES, MONTH_NAMES_GEN } from '../lib/db'
 
-export type PeriodValue = { start: string; end: string; label: string }
-type Mode = 'day' | 'week' | 'month' | 'year' | 'range'
+export type PeriodValue = {
+  start: string
+  end: string
+  label: string
+  // Когда true — список записей стоит группировать по месяцам (Год / Всё).
+  groupByMonth: boolean
+}
+type Mode = 'day' | 'week' | 'month' | 'year' | 'all' | 'range'
 
 const MODES: Array<{ id: Mode; label: string }> = [
   { id: 'day', label: 'День' },
   { id: 'week', label: 'Неделя' },
   { id: 'month', label: 'Месяц' },
   { id: 'year', label: 'Год' },
+  { id: 'all', label: 'Всё' },
   { id: 'range', label: 'Период' },
 ]
 
@@ -39,7 +46,7 @@ function weekLabel(s: Date, e: Date) {
   return `${formatDateHuman(iso(s))} – ${formatDateHuman(iso(e))}`
 }
 
-// Переключатель периода: День / Неделя / Месяц / Год / Период.
+// Переключатель периода: День / Неделя / Месяц / Год / Всё / Период.
 export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) => void }) {
   const todayISO = iso(new Date())
   const [mode, setMode] = useState<Mode>('month')
@@ -53,25 +60,33 @@ export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) 
   const a = new Date(anchor + 'T00:00:00')
   let value: PeriodValue
   if (mode === 'day') {
-    value = { start: anchor, end: anchor, label: formatDateHuman(anchor) }
+    value = { start: anchor, end: anchor, label: formatDateHuman(anchor), groupByMonth: false }
   } else if (mode === 'week') {
     const s = startOfWeek(a)
     const e = new Date(s)
     e.setDate(s.getDate() + 6)
-    value = { start: iso(s), end: iso(e), label: weekLabel(s, e) }
+    value = { start: iso(s), end: iso(e), label: weekLabel(s, e), groupByMonth: false }
   } else if (mode === 'month') {
     const s = new Date(a.getFullYear(), a.getMonth(), 1)
     const e = new Date(a.getFullYear(), a.getMonth() + 1, 0)
-    value = { start: iso(s), end: iso(e), label: `${MONTH_NAMES[a.getMonth()]} ${a.getFullYear()}` }
+    value = {
+      start: iso(s),
+      end: iso(e),
+      label: `${MONTH_NAMES[a.getMonth()]} ${a.getFullYear()}`,
+      groupByMonth: false,
+    }
   } else if (mode === 'year') {
     const s = new Date(a.getFullYear(), 0, 1)
     const e = new Date(a.getFullYear(), 11, 31)
-    value = { start: iso(s), end: iso(e), label: String(a.getFullYear()) }
+    value = { start: iso(s), end: iso(e), label: String(a.getFullYear()), groupByMonth: true }
+  } else if (mode === 'all') {
+    value = { start: '1900-01-01', end: '2999-12-31', label: 'Всё время', groupByMonth: true }
   } else {
     value = {
       start: rangeStart,
       end: rangeEnd,
       label: `${formatDateHuman(rangeStart)} – ${formatDateHuman(rangeEnd)}`,
+      groupByMonth: false,
     }
   }
 
@@ -89,6 +104,8 @@ export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) 
     setAnchor(iso(x))
   }
 
+  const navigable = mode === 'day' || mode === 'week' || mode === 'month' || mode === 'year'
+
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
       <div className="flex flex-wrap gap-2">
@@ -104,17 +121,15 @@ export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) 
         ))}
       </div>
       {mode === 'range' ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="text-xs text-neutral-500">с</span>
-          <div className="flex-1">
-            <DatePicker value={rangeStart} onChange={setRangeStart} />
-          </div>
-          <span className="text-xs text-neutral-500">по</span>
-          <div className="flex-1">
-            <DatePicker value={rangeEnd} onChange={setRangeEnd} />
-          </div>
-        </div>
-      ) : (
+        <RangeCalendar
+          start={rangeStart}
+          end={rangeEnd}
+          onChange={(s, e) => {
+            setRangeStart(s)
+            setRangeEnd(e)
+          }}
+        />
+      ) : navigable ? (
         <div className="flex items-center justify-between">
           <button type="button" onClick={() => shift(-1)} className={navBtn}>
             ‹
@@ -124,6 +139,8 @@ export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) 
             ›
           </button>
         </div>
+      ) : (
+        <div className="text-center text-sm font-medium">{value.label}</div>
       )}
     </div>
   )

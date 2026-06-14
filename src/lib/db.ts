@@ -152,6 +152,18 @@ export async function fetchRate(code: string): Promise<number | null> {
   if (code === BASE_CURRENCY) return 1
   const lower = code.toLowerCase()
   const base = BASE_CURRENCY.toLowerCase()
+  // Источник № 0 (главный): серверная функция Supabase «get-rate» — как у Jarvis:
+  // ходит в официальные/поисковые источники без блокировок браузера и прячет ключ.
+  // Если функция задеплоена — это самый точный вариант. Иначе падаем на источники ниже.
+  try {
+    const { data, error } = await supabase.functions.invoke('get-rate', {
+      body: { from: code, to: BASE_CURRENCY },
+    })
+    const r = Number((data as { rate?: number } | null)?.rate)
+    if (!error && r > 0) return Math.round(r * 100) / 100
+  } catch {
+    // функция ещё не задеплоена — используем прямые источники
+  }
   // Источник 0: Центробанк Узбекистана — официальный курс к суму, обновляется ежедневно,
   // именно его обычно показывает и Google для UZS. Без ключа, CORS-ok.
   try {

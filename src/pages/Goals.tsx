@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import Select from '../components/Select'
+import Combobox from '../components/Combobox'
 import DatePicker from '../components/DatePicker'
 import {
   formatSum,
@@ -11,6 +12,9 @@ import {
   formatDateHuman,
   loadCurrencies,
   fetchRate,
+  getOrCreateMonth,
+  SUBCATEGORY_PRESETS,
+  BASE_CURRENCY,
   WISH_CATEGORIES,
 } from '../lib/db'
 
@@ -23,12 +27,14 @@ type Goal = {
   is_goal: boolean
   done: boolean
   category: string | null
+  expense_id: string | null
   created_at: string
 }
 type Contribution = { id: string; goal_id: string; amount: number; date: string }
+type Category = { id: string; name: string }
 
 const GOAL_COLS =
-  'id, name, note, target_amount, target_date, is_goal, done, category, created_at'
+  'id, name, note, target_amount, target_date, is_goal, done, category, expense_id, created_at'
 
 // Валюты для ввода цены желания/цели (всё пересчитывается в сум).
 const PRICE_CURRENCIES = ['UZS', 'USD', 'RUB'] as const
@@ -69,6 +75,7 @@ export default function Goals() {
   const { user } = useAuth()
   const [goals, setGoals] = useState<Goal[]>([])
   const [contribs, setContribs] = useState<Contribution[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [rates, setRates] = useState<Record<string, number>>({ UZS: 1 })
@@ -97,13 +104,20 @@ export default function Goals() {
   const [editContribAmount, setEditContribAmount] = useState('')
   const [editContribDate, setEditContribDate] = useState('')
 
+  // Форма «Куплено → записать в расходы».
+  const [buyFormId, setBuyFormId] = useState<string | null>(null)
+  const [buyAmount, setBuyAmount] = useState('')
+  const [buyCategory, setBuyCategory] = useState<string>('')
+  const [buySub, setBuySub] = useState('')
+  const [buyDate, setBuyDate] = useState(new Date().toISOString().slice(0, 10))
+
   useEffect(() => {
     if (!user) return
     let active = true
     ;(async () => {
       try {
         setLoading(true)
-        const [gRes, cRes, curList] = await Promise.all([
+        const [gRes, cRes, catRes, curList] = await Promise.all([
           supabase
             .from('goals')
             .select(GOAL_COLS)
@@ -113,13 +127,16 @@ export default function Goals() {
             .from('goal_contributions')
             .select('id, goal_id, amount, date')
             .eq('user_id', user.id),
+          supabase.from('categories').select('id, name').eq('user_id', user.id).order('sort_order'),
           loadCurrencies(user.id),
         ])
         if (!active) return
         if (gRes.error) throw gRes.error
         if (cRes.error) throw cRes.error
+        if (catRes.error) throw catRes.error
         setGoals((gRes.data ?? []) as Goal[])
         setContribs((cRes.data ?? []) as Contribution[])
+        setCategories((catRes.data ?? []) as Category[])
         // Курсы для USD/RUB: берём из валют пользователя, иначе подтягиваем автоматически.
         const map: Record<string, number> = { UZS: 1 }
         for (const code of ['USD', 'RUB']) {
@@ -143,6 +160,10 @@ export default function Goals() {
   }, [user])
 
   const rateFor = (code: string) => rates[code] ?? 1
+  const catName = (id: string) => categories.find((c) => c.id === id)?.name ?? ''
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name }))
+  // Подсказки подкатегорий для выбранной категории.
+  const subOptions = (catId: string) => SUBCATEGORY_PRESETS[catName(catId)] ?? []
 
   const savedFor = (goalId: string) =>
     contribs.filter((c) => c.goal_id === goalId).reduce((s, c) => s + Number(c.amount), 0)
@@ -263,6 +284,7 @@ export default function Goals() {
     setContribs(contribs.filter((c) => c.id !== id))
   }
 
+  // Отметить выполненным БЕЗ записи в расходы (напр. цель-накопление или уже записано вручную).
   const setDone = async (g: Goal, done: boolean) => {
     const { data, error } = await supabase
       .from('goals')
@@ -277,13 +299,101 @@ export default function Goals() {
     setGoals(goals.map((x) => (x.id === g.id ? (data as Goal) : x)))
   }
 
+  // Открыть форму «Куплено»: предзаполняем сумму (цель/цена), категорию и дату.
+  const openBuyForm = (g: Goal) => {
+    setBuyFormId(g.id)
+    const saved = savedFor(g.id)
+    const amount = g.target_amount > 0 ? g.target_amount : saved
+    setBuyAmount(amount > 0 ? formatAmountInput(String(amount)) : '')
+    // Пытаемся угадать категорию расхода по категории желания.
+    const guess =
+      categories.find((c) => c.name === g.category) ??
+      categories.find((c) => c.name.startsWith('Цели')) ??
+      categories[0]
+    setBuyCategory(guess?.id ?? '')
+    setBuySub('')
+    setBuyDate(new Date().toISOString().slice(0, 10))
+    setError(null)
+  }
+
+  // Записать покупку в расходы и связать с желанием/целью (без дублирования).
+  const confirmBuy = async (g: Goal) => {
+    if (!user) return
+    const value = parseAmount(buyAmount)
+    if (!value) {
+      setError('Укажи сумму покупки')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const d = new Date(buyDate + 'T00:00:00')
+      const month = await getOrCreateMonth(user.id, d.getFullYear(), d.getMonth() + 1)
+      const { data: exp, error: expErr } = await supabase
+        .from('expenses')
+        .insert({
+          user_id: user.id,
+          amount: value,
+          date: buyDate,
+          description: g.name,
+          category_id: buyCategory || null,
+          subcategory: buySub.trim() || null,
+          month_id: month.id,
+          currency: BASE_CURRENCY,
+          original_amount: value,
+        })
+        .select('id')
+        .single()
+      if (expErr || !exp) throw expErr ?? new Error('Не удалось создать расход')
+      const { data, error } = await supabase
+        .from('goals')
+        .update({ done: true, expense_id: (exp as { id: string }).id })
+        .eq('id', g.id)
+        .select(GOAL_COLS)
+        .single()
+      if (error || !data) throw error ?? new Error('Ошибка')
+      setGoals(goals.map((x) => (x.id === g.id ? (data as Goal) : x)))
+      setBuyFormId(null)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Вернуть из «Достигнуто»: если был связанный расход — удаляем его тоже.
+  const returnItem = async (g: Goal) => {
+    if (g.expense_id) {
+      const { error: delErr } = await supabase.from('expenses').delete().eq('id', g.expense_id)
+      if (delErr) {
+        setError(delErr.message)
+        return
+      }
+    }
+    const { data, error } = await supabase
+      .from('goals')
+      .update({ done: false, expense_id: null })
+      .eq('id', g.id)
+      .select(GOAL_COLS)
+      .single()
+    if (error || !data) {
+      setError(error?.message ?? 'Ошибка')
+      return
+    }
+    setGoals(goals.map((x) => (x.id === g.id ? (data as Goal) : x)))
+  }
+
   const removeGoal = async (id: string) => {
+    const g = goals.find((x) => x.id === id)
+    if (g?.expense_id) {
+      await supabase.from('expenses').delete().eq('id', g.expense_id)
+    }
     const { error } = await supabase.from('goals').delete().eq('id', id)
     if (error) {
       setError(error.message)
       return
     }
-    setGoals(goals.filter((g) => g.id !== id))
+    setGoals(goals.filter((x) => x.id !== id))
     setContribs(contribs.filter((c) => c.goal_id !== id))
   }
 
@@ -302,6 +412,49 @@ export default function Goals() {
 
   const wishConverted = Math.round(parseAmount(price) * rateFor(priceCurrency))
   const goalConverted = Math.round(parseAmount(goalTarget) * rateFor(goalTargetCurrency))
+  const buyConverted = parseAmount(buyAmount)
+
+  // Форма записи покупки в расходы (общая для желаний и целей).
+  const renderBuyForm = (g: Goal) => (
+    <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3">
+      <p className="text-sm font-medium">🛒 Записать в расходы</p>
+      <input
+        inputMode="numeric"
+        value={buyAmount}
+        onChange={(e) => setBuyAmount(formatAmountInput(e.target.value))}
+        placeholder="Сумма покупки"
+        className={inputCls}
+      />
+      <Select
+        value={buyCategory}
+        onChange={(v) => {
+          setBuyCategory(v)
+          setBuySub('')
+        }}
+        options={categoryOptions}
+        placeholder="Категория"
+      />
+      <Combobox
+        value={buySub}
+        onChange={setBuySub}
+        options={subOptions(buyCategory)}
+        placeholder="Подкатегория (необязательно)"
+      />
+      <DatePicker value={buyDate} onChange={setBuyDate} />
+      <p className="text-xs text-neutral-500">«{g.name}» попадёт в расходы на {formatSum(buyConverted)}.</p>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => confirmBuy(g)} disabled={busy} className={btnPrimary}>
+          {busy ? 'Сохранение…' : 'Записать в расходы'}
+        </button>
+        <button onClick={() => setDone(g, true)} className={btnGhost}>
+          Без расхода
+        </button>
+        <button onClick={() => setBuyFormId(null)} className={btnMuted}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -415,7 +568,9 @@ export default function Goals() {
                     </div>
                     <p className="text-xs text-neutral-500">Цель: {formatSum(g.target_amount)}</p>
 
-                    {contribFormId === g.id ? (
+                    {buyFormId === g.id ? (
+                      renderBuyForm(g)
+                    ) : contribFormId === g.id ? (
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <input
                           inputMode="numeric"
@@ -448,8 +603,8 @@ export default function Goals() {
                         >
                           💰 Отложить
                         </button>
-                        <button onClick={() => setDone(g, true)} className={btnGhost}>
-                          ✅ Готово
+                        <button onClick={() => openBuyForm(g)} className={btnGhost}>
+                          ✅ Куплено
                         </button>
                         <button onClick={() => removeGoal(g.id)} className={btnMuted}>
                           Удалить
@@ -559,7 +714,9 @@ export default function Goals() {
                         <p className="text-xs text-neutral-500">≈ {formatSum(g.target_amount)}</p>
                       )}
                     </div>
-                    {goalFormId === g.id ? (
+                    {buyFormId === g.id ? (
+                      renderBuyForm(g)
+                    ) : goalFormId === g.id ? (
                       <div className="flex flex-col gap-2">
                         <div className="flex gap-2">
                           <input
@@ -597,7 +754,7 @@ export default function Goals() {
                         <button onClick={() => openGoalForm(g)} className={btnPrimary}>
                           🎯 Сделать целью
                         </button>
-                        <button onClick={() => setDone(g, true)} className={btnGhost}>
+                        <button onClick={() => openBuyForm(g)} className={btnGhost}>
                           ✅ Куплено
                         </button>
                         <button onClick={() => removeGoal(g.id)} className={btnMuted}>
@@ -621,9 +778,16 @@ export default function Goals() {
                   key={g.id}
                   className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 opacity-70 dark:border-neutral-800 dark:bg-neutral-900/40"
                 >
-                  <span className="text-sm line-through">{g.name}</span>
+                  <span className="flex items-center gap-2 text-sm">
+                    <span className="line-through">{g.name}</span>
+                    {g.expense_id && (
+                      <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400">
+                        в расходах
+                      </span>
+                    )}
+                  </span>
                   <div className="flex shrink-0 gap-3 text-sm text-neutral-500">
-                    <button onClick={() => setDone(g, false)} className="transition hover:text-neutral-900 dark:hover:text-neutral-100">
+                    <button onClick={() => returnItem(g)} className="transition hover:text-neutral-900 dark:hover:text-neutral-100">
                       Вернуть
                     </button>
                     <button onClick={() => removeGoal(g.id)} className="transition hover:text-red-500 dark:hover:text-red-400">

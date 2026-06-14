@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import Combobox from '../components/Combobox'
@@ -11,6 +11,7 @@ import {
   formatDateHuman,
   formatAmountInput,
   parseAmount,
+  MONTH_NAMES,
   INCOME_SOURCE_PRESETS,
   loadCurrencies,
   rateOf,
@@ -293,8 +294,13 @@ export default function Incomes() {
               Сначала старые
             </button>
           </div>
-          {sortedItems.map((i) =>
-            editId === i.id ? (
+          {sortedItems.map((i, idx) => {
+            const showMonthHeader =
+              period?.groupByMonth &&
+              (idx === 0 || sortedItems[idx - 1].date.slice(0, 7) !== i.date.slice(0, 7))
+            const dd = new Date(i.date + 'T00:00:00')
+            const row =
+              editId === i.id ? (
               <div
                 key={i.id}
                 className="flex flex-col gap-3 rounded-xl border border-emerald-500/40 bg-neutral-50 px-4 py-3 dark:bg-neutral-900/40"
@@ -368,8 +374,21 @@ export default function Incomes() {
                   </button>
                 </div>
               </div>
-            ),
-          )}
+              )
+            return (
+              <Fragment key={i.id}>
+                {showMonthHeader && (
+                  <div className="mt-3 flex items-center gap-3 first:mt-0">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                      {MONTH_NAMES[dd.getMonth()]} {dd.getFullYear()}
+                    </span>
+                    <hr className="flex-1 border-neutral-200 dark:border-neutral-800" />
+                  </div>
+                )}
+                {row}
+              </Fragment>
+            )
+          })}
         </div>
       )}
     </div>
