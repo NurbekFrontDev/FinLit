@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -34,6 +34,10 @@ export default function Budget() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+
+  // Перетаскивание категорий (мышь + тач) для смены порядка.
+  const [dragId, setDragId] = useState<string | null>(null)
+  const orderBeforeDrag = useRef<string>('')
 
   useEffect(() => {
     if (!user) return
@@ -99,12 +103,91 @@ export default function Budget() {
     if (pErr) setError(pErr.message)
   }
 
+  // Перетаскивание: меняем порядок локально, затем сохраняем sort_order в БД.
+  const reorderCategories = (overId: string) => {
+    if (!dragId || dragId === overId) return
+    setCategories((cs) => {
+      const from = cs.findIndex((c) => c.id === dragId)
+      const to = cs.findIndex((c) => c.id === overId)
+      if (from === -1 || to === -1 || from === to) return cs
+      const next = cs.slice()
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }
+
+  const handleDragMove = (e: React.PointerEvent) => {
+    if (!dragId) return
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+    const row = el?.closest('[data-cat-id]') as HTMLElement | null
+    const overId = row?.getAttribute('data-cat-id')
+    if (overId) reorderCategories(overId)
+  }
+
+  const endDrag = async () => {
+    if (!dragId) return
+    setDragId(null)
+    const currentOrder = categories.map((c) => c.id).join(',')
+    if (currentOrder === orderBeforeDrag.current) return
+    const ordered = categories.map((c, i) => ({ id: c.id, sort_order: i + 1 }))
+    setCategories((cs) => cs.map((c, i) => ({ ...c, sort_order: i + 1 })))
+    const results = await Promise.all(
+      ordered.map((o) =>
+        supabase.from('categories').update({ sort_order: o.sort_order }).eq('id', o.id),
+      ),
+    )
+    const failed = results.find((r) => r.error)
+    if (failed?.error) setError(failed.error.message)
+  }
+
   const addCategory = async () => {
     if (!user || !newCatName.trim()) return
+    const name = newCatName.trim()
     const maxOrder = categories.reduce((m, c) => Math.max(m, c.sort_order), 0)
+
+    // Не создаём дубликат активной категории с таким же именем.
+    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      setError('Категория с таким названием уже есть.')
+      return
+    }
+
+    // Если такая категория была удалена раньше — возвращаем ту же строку (снимаем архив),
+    // чтобы прошлые расходы в истории снова показывали актуальное название без «(удалена)».
+    const { data: revived, error: findErr } = await supabase
+      .from('categories')
+      .select('id, name, percent, sort_order, archived')
+      .eq('user_id', user.id)
+      .eq('archived', true)
+      .ilike('name', name)
+      .order('created_at', { ascending: true })
+      .limit(1)
+    if (findErr) {
+      setError(findErr.message)
+      return
+    }
+    if (revived && revived.length > 0) {
+      const found = revived[0] as Category
+      const { error: upErr } = await supabase
+        .from('categories')
+        .update({ archived: false, sort_order: maxOrder + 1 })
+        .eq('id', found.id)
+      if (upErr) {
+        setError(upErr.message)
+        return
+      }
+      setCategories([
+        ...categories,
+        { ...found, percent: Number(found.percent), sort_order: maxOrder + 1, archived: false },
+      ])
+      setNewCatName('')
+      setError(null)
+      return
+    }
+
     const { data, error: addErr } = await supabase
       .from('categories')
-      .insert({ user_id: user.id, name: newCatName.trim(), percent: 0, sort_order: maxOrder + 1 })
+      .insert({ user_id: user.id, name, percent: 0, sort_order: maxOrder + 1 })
       .select('id, name, percent, sort_order, archived')
       .single()
     if (addErr || !data) {
@@ -244,8 +327,33 @@ export default function Budget() {
               ) : (
                 <div
                   key={c.id}
-                  className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                  data-cat-id={c.id}
+                  className={`flex items-center gap-2 rounded-xl border bg-neutral-50 px-3 py-3 dark:bg-neutral-900/40 ${
+                    dragId === c.id
+                      ? 'border-emerald-500/60 opacity-60 shadow-lg'
+                      : 'border-neutral-200 dark:border-neutral-800'
+                  }`}
                 >
+                  <button
+                    type="button"
+                    aria-label="Перетащить для смены порядка"
+                    title="Перетащи, чтобы изменить порядок"
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                      orderBeforeDrag.current = categories.map((x) => x.id).join(',')
+                      setDragId(c.id)
+                    }}
+                    onPointerMove={handleDragMove}
+                    onPointerUp={(e) => {
+                      ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+                      endDrag()
+                    }}
+                    onPointerCancel={endDrag}
+                    className="shrink-0 cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
+                  >
+                    ⠿
+                  </button>
                   <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">{c.name}</span>
                   <input
                     inputMode="numeric"
