@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -38,6 +38,8 @@ export default function Budget() {
   // Перетаскивание категорий (мышь + тач) для смены порядка.
   const [dragId, setDragId] = useState<string | null>(null)
   const orderBeforeDrag = useRef<string>('')
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const prevPos = useRef<Map<string, { top: number; left: number }>>(new Map())
 
   useEffect(() => {
     if (!user) return
@@ -82,6 +84,32 @@ export default function Budget() {
       active = false
     }
   }, [user, year, month])
+
+  // FLIP-анимация: карточки плавно переезжают при смене порядка, а удерживаемая слегка увеличивается.
+  useLayoutEffect(() => {
+    const refs = rowRefs.current
+    const nextPos = new Map<string, { top: number; left: number }>()
+    refs.forEach((el, id) => nextPos.set(id, { top: el.offsetTop, left: el.offsetLeft }))
+    refs.forEach((el, id) => {
+      const resting = id === dragId ? ' scale(1.04)' : ''
+      const prev = prevPos.current.get(id)
+      const next = nextPos.get(id)
+      if (prev && next && (prev.top !== next.top || prev.left !== next.left)) {
+        const dx = prev.left - next.left
+        const dy = prev.top - next.top
+        el.style.transition = 'none'
+        el.style.transform = `translate(${dx}px, ${dy}px)${resting}`
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 200ms cubic-bezier(0.2, 0, 0, 1)'
+          el.style.transform = resting
+        })
+      } else {
+        el.style.transition = 'transform 160ms ease'
+        el.style.transform = resting
+      }
+    })
+    prevPos.current = nextPos
+  }, [categories, dragId])
 
   const totalPercent = categories.reduce((s, c) => s + Number(c.percent), 0)
 
@@ -328,12 +356,17 @@ export default function Budget() {
                 <div
                   key={c.id}
                   data-cat-id={c.id}
-                  className={`flex items-center gap-2 rounded-xl border bg-neutral-50 px-3 py-3 dark:bg-neutral-900/40 ${
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(c.id, el)
+                    else rowRefs.current.delete(c.id)
+                  }}
+                  className={`relative flex flex-col gap-1.5 rounded-xl border bg-neutral-50 px-3 py-2.5 dark:bg-neutral-900/40 ${
                     dragId === c.id
-                      ? 'border-emerald-500/60 opacity-60 shadow-lg'
+                      ? 'z-10 border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
                       : 'border-neutral-200 dark:border-neutral-800'
                   }`}
                 >
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
                     aria-label="Перетащить для смены порядка"
@@ -354,18 +387,15 @@ export default function Budget() {
                   >
                     ⠿
                   </button>
-                  <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">{c.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
                   <input
                     inputMode="numeric"
                     value={String(c.percent)}
                     onChange={(e) => setPercent(c.id, e.target.value)}
                     onBlur={() => savePercent(c.id)}
-                    className="ml-1 w-14 shrink-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+                    className="w-14 shrink-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
                   />
-                  <span className="shrink-0 text-neutral-500">%</span>
-                  <span className="w-20 shrink-0 whitespace-nowrap text-right text-xs font-medium text-emerald-600 dark:text-emerald-400 sm:w-28 sm:text-sm">
-                    {formatSum((received * Number(c.percent)) / 100)}
-                  </span>
+                  <span className="shrink-0 text-sm text-neutral-500">%</span>
                   <div className="relative shrink-0">
                     <button
                       type="button"
@@ -396,6 +426,13 @@ export default function Budget() {
                         </button>
                       </div>
                     )}
+                  </div>
+                  </div>
+                  <div className="flex items-center justify-between pl-7 text-xs">
+                    <span className="text-neutral-400 dark:text-neutral-500">В этом месяце</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      {formatSum((received * Number(c.percent)) / 100)}
+                    </span>
                   </div>
                 </div>
               ),
