@@ -1,12 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { getOrCreateMonth, formatSum, MONTH_NAMES } from '../lib/db'
+import {
+  getOrCreateMonth,
+  formatSum,
+  MONTH_NAMES,
+  formatAmountInput,
+  parseAmount,
+} from '../lib/db'
 
 type Category = { id: string; name: string; percent: number; sort_order: number }
 
 const inputCls =
-  'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
+  'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 
 export default function Budget() {
   const { user } = useAuth()
@@ -39,7 +45,7 @@ export default function Budget() {
         if (!active) return
         if (catRes.error) throw catRes.error
         setMonthId(m.id)
-        setPlannedIncome(String(m.planned_income ?? 0))
+        setPlannedIncome(m.planned_income ? formatAmountInput(String(m.planned_income)) : '')
         setCategories(
           ((catRes.data ?? []) as Category[]).map((c) => ({
             ...c,
@@ -57,7 +63,7 @@ export default function Budget() {
     }
   }, [user, year, month])
 
-  const income = Number(plannedIncome) || 0
+  const income = parseAmount(plannedIncome)
   const totalPercent = categories.reduce((s, c) => s + Number(c.percent), 0)
 
   const setPercent = (id: string, val: string) => {
@@ -108,10 +114,10 @@ export default function Budget() {
               inputMode="numeric"
               value={plannedIncome}
               onChange={(e) => {
-                setPlannedIncome(e.target.value)
+                setPlannedIncome(formatAmountInput(e.target.value))
                 setSaved(false)
               }}
-              placeholder="Например, 10000000"
+              placeholder="Например, 10 000 000"
               className={inputCls}
             />
           </div>
@@ -131,17 +137,17 @@ export default function Budget() {
             {categories.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
               >
-                <span className="flex-1 font-medium">{c.name}</span>
+                <span className="min-w-0 flex-1 text-sm font-medium leading-tight">{c.name}</span>
                 <input
                   inputMode="numeric"
                   value={String(c.percent)}
                   onChange={(e) => setPercent(c.id, e.target.value)}
-                  className="w-16 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+                  className="w-14 shrink-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
                 />
-                <span className="text-neutral-500">%</span>
-                <span className="w-36 text-right text-sm text-emerald-600 dark:text-emerald-400">
+                <span className="shrink-0 text-neutral-500">%</span>
+                <span className="w-24 shrink-0 whitespace-nowrap text-right text-xs text-emerald-600 dark:text-emerald-400 sm:w-32 sm:text-sm">
                   {formatSum((income * Number(c.percent)) / 100)}
                 </span>
               </div>

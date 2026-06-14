@@ -5,6 +5,7 @@ const navItems = [
   { to: '/incomes', label: 'Доходы', icon: '💼' },
   { to: '/expenses', label: 'Расходы', icon: '🧾' },
   { to: '/budget', label: 'Бюджет', icon: '📊' },
+  { to: '/goals', label: 'Цели', icon: '🎯' },
   { to: '/history', label: 'История', icon: '🗓️' },
   { to: '/settings', label: 'Настройки', icon: '⚙️' },
 ]

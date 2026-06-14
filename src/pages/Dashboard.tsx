@@ -127,7 +127,7 @@ export default function Dashboard() {
                   key={r.id}
                   className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
                 >
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:items-center sm:justify-between">
                     <span className="font-medium">
                       {st.emoji} {r.name}{' '}
                       <span className="text-neutral-500">{r.percent}%</span>
