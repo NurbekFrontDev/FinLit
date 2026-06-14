@@ -116,9 +116,6 @@ export default function History() {
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-semibold">🗓️ История</h1>
-      <p className="-mt-2 text-sm text-neutral-500 dark:text-neutral-400">
-        Нажми на месяц, чтобы увидеть детализацию доходов и расходов.
-      </p>
 
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">Загрузка…</p>
@@ -213,8 +210,8 @@ export default function History() {
                             const pct = d.expense > 0 ? Math.round((b.amount / d.expense) * 100) : 0
                             return (
                               <div key={b.label} className="flex flex-col gap-1">
-                                <div className="flex items-center justify-between gap-2 text-sm">
-                                  <span className="truncate text-neutral-700 dark:text-neutral-300">{b.label}</span>
+                                <div className="flex items-start justify-between gap-2 text-sm">
+                                  <span className="min-w-0 break-words text-neutral-700 dark:text-neutral-300">{b.label}</span>
                                   <span className="shrink-0 font-medium">
                                     {formatSum(b.amount)} <span className="text-xs text-neutral-400">({pct}%)</span>
                                   </span>

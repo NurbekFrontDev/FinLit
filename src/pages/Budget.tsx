@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -28,8 +28,6 @@ export default function Budget() {
   const [newCatName, setNewCatName] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-  const [busy, setBusy] = useState(false)
 
   // Управление категориями: меню «три точки», переименование, удаление.
   const [menuId, setMenuId] = useState<string | null>(null)
@@ -81,14 +79,24 @@ export default function Budget() {
     }
   }, [user, year, month])
 
-  const goal = parseAmount(goalIncome)
   const totalPercent = categories.reduce((s, c) => s + Number(c.percent), 0)
 
   const setPercent = (id: string, val: string) => {
     setCategories((cs) =>
       cs.map((c) => (c.id === id ? { ...c, percent: Number(val) || 0 } : c)),
     )
-    setSaved(false)
+  }
+
+  // Автосохранение процента категории при уходе из поля.
+  const savePercent = async (id: string) => {
+    if (!user) return
+    const cat = categories.find((c) => c.id === id)
+    if (!cat) return
+    const { error: pErr } = await supabase
+      .from('categories')
+      .update({ percent: Number(cat.percent) })
+      .eq('id', id)
+    if (pErr) setError(pErr.message)
   }
 
   const addCategory = async () => {
@@ -160,33 +168,6 @@ export default function Budget() {
     if (mErr) setError(mErr.message)
   }
 
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!user || !monthId) return
-    setBusy(true)
-    setError(null)
-    setSaved(false)
-    try {
-      const { error: mErr } = await supabase
-        .from('months')
-        .update({ planned_income: goal })
-        .eq('id', monthId)
-      if (mErr) throw mErr
-      for (const c of categories) {
-        const { error: cErr } = await supabase
-          .from('categories')
-          .update({ percent: Number(c.percent) })
-          .eq('id', c.id)
-        if (cErr) throw cErr
-      }
-      setSaved(true)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-semibold">📊 Бюджет / План · {MONTH_NAMES[month - 1]}</h1>
@@ -194,7 +175,7 @@ export default function Budget() {
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">Загрузка…</p>
       ) : (
-        <form onSubmit={save} className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
               <span className="text-xs text-neutral-500 dark:text-neutral-400">Получено в этом месяце</span>
@@ -205,10 +186,7 @@ export default function Budget() {
               <input
                 inputMode="numeric"
                 value={goalIncome}
-                onChange={(e) => {
-                  setGoalIncome(formatAmountInput(e.target.value))
-                  setSaved(false)
-                }}
+                onChange={(e) => setGoalIncome(formatAmountInput(e.target.value))}
                 onBlur={saveGoalIncome}
                 placeholder="Например, 10 000 000"
                 className={inputCls}
@@ -268,12 +246,13 @@ export default function Budget() {
                   key={c.id}
                   className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
                 >
-                  <span className="min-w-0 flex-1 text-sm font-medium leading-tight">{c.name}</span>
+                  <span className="min-w-0 flex-1 break-words text-sm font-medium leading-tight">{c.name}</span>
                   <input
                     inputMode="numeric"
                     value={String(c.percent)}
                     onChange={(e) => setPercent(c.id, e.target.value)}
-                    className="w-14 shrink-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+                    onBlur={() => savePercent(c.id)}
+                    className="ml-1 w-14 shrink-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
                   />
                   <span className="shrink-0 text-neutral-500">%</span>
                   <span className="w-20 shrink-0 whitespace-nowrap text-right text-xs font-medium text-emerald-600 dark:text-emerald-400 sm:w-28 sm:text-sm">
@@ -343,16 +322,8 @@ export default function Budget() {
             </p>
           )}
           {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
-          {saved && <p className="text-sm text-emerald-600 dark:text-emerald-400">✅ Сохранено!</p>}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-lg bg-emerald-500 px-4 py-2.5 font-medium text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-60"
-          >
-            {busy ? 'Сохранение…' : 'Сохранить'}
-          </button>
-        </form>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">💾 Изменения сохраняются автоматически.</p>
+        </div>
       )}
 
       {/* Клик вне меню — закрыть. */}
