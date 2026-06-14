@@ -177,7 +177,7 @@ export default function History() {
                 </button>
 
                 {open && (
-                  <div className="flex flex-col gap-4 border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
+                  <div className="animate-pop flex flex-col gap-4 border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
                     {Number(m.planned_income) > 0 && (
                       <p className="text-xs text-neutral-500">
                         План выполнен на <span className="font-medium text-neutral-700 dark:text-neutral-300">{planPct}%</span>

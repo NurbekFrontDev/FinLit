@@ -50,7 +50,7 @@ export default function Combobox({ value, onChange, options, placeholder }: Prop
         </button>
       </div>
       {open && filtered.length > 0 && (
-        <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="animate-pop absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           {filtered.map((o) => (
             <button
               key={o}

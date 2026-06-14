@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -36,10 +36,18 @@ export default function Budget() {
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
   // Перетаскивание категорий (мышь + тач) для смены порядка.
-  const [dragId, setDragId] = useState<string | null>(null)
-  const orderBeforeDrag = useRef<string>('')
+  // Во время перетаскивания порядок массива НЕ меняется — вместо этого соседние
+  // карточки плавно сдвигаются трансформом, а сама карточка следует за пальцем.
+  // Порядок фиксируется и сохраняется автоматически при отпускании — ничего нажимать не нужно.
+  const [drag, setDrag] = useState<{
+    id: string
+    fromIndex: number
+    overIndex: number
+    startY: number
+    offset: number
+    slot: number
+  } | null>(null)
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  const prevPos = useRef<Map<string, { top: number; left: number }>>(new Map())
 
   useEffect(() => {
     if (!user) return
@@ -85,32 +93,6 @@ export default function Budget() {
     }
   }, [user, year, month])
 
-  // FLIP-анимация: карточки плавно переезжают при смене порядка, а удерживаемая слегка увеличивается.
-  useLayoutEffect(() => {
-    const refs = rowRefs.current
-    const nextPos = new Map<string, { top: number; left: number }>()
-    refs.forEach((el, id) => nextPos.set(id, { top: el.offsetTop, left: el.offsetLeft }))
-    refs.forEach((el, id) => {
-      const resting = id === dragId ? ' scale(1.04)' : ''
-      const prev = prevPos.current.get(id)
-      const next = nextPos.get(id)
-      if (prev && next && (prev.top !== next.top || prev.left !== next.left)) {
-        const dx = prev.left - next.left
-        const dy = prev.top - next.top
-        el.style.transition = 'none'
-        el.style.transform = `translate(${dx}px, ${dy}px)${resting}`
-        requestAnimationFrame(() => {
-          el.style.transition = 'transform 200ms cubic-bezier(0.2, 0, 0, 1)'
-          el.style.transform = resting
-        })
-      } else {
-        el.style.transition = 'transform 160ms ease'
-        el.style.transform = resting
-      }
-    })
-    prevPos.current = nextPos
-  }, [categories, dragId])
-
   const totalPercent = categories.reduce((s, c) => s + Number(c.percent), 0)
 
   const setPercent = (id: string, val: string) => {
@@ -131,42 +113,68 @@ export default function Budget() {
     if (pErr) setError(pErr.message)
   }
 
-  // Перетаскивание: меняем порядок локально, затем сохраняем sort_order в БД.
-  const reorderCategories = (overId: string) => {
-    if (!dragId || dragId === overId) return
-    setCategories((cs) => {
-      const from = cs.findIndex((c) => c.id === dragId)
-      const to = cs.findIndex((c) => c.id === overId)
-      if (from === -1 || to === -1 || from === to) return cs
-      const next = cs.slice()
-      const [moved] = next.splice(from, 1)
-      next.splice(to, 0, moved)
-      return next
+  // Начало перетаскивания: запоминаем высоту карточки (+ gap-2 = 8px) как шаг смещения.
+  const startDrag = (e: React.PointerEvent, id: string, index: number) => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const el = rowRefs.current.get(id)
+    const slot = (el?.offsetHeight ?? 56) + 8
+    setDrag({ id, fromIndex: index, overIndex: index, startY: e.clientY, offset: 0, slot })
+  }
+
+  // Движение: карточка следует за пальцем (offset), а целевой индекс считаем по смещению.
+  const moveDrag = (e: React.PointerEvent) => {
+    const clientY = e.clientY
+    setDrag((d) => {
+      if (!d) return d
+      const offset = clientY - d.startY
+      const steps = Math.round(offset / d.slot)
+      const overIndex = Math.max(0, Math.min(categories.length - 1, d.fromIndex + steps))
+      if (offset === d.offset && overIndex === d.overIndex) return d
+      return { ...d, offset, overIndex }
     })
   }
 
-  const handleDragMove = (e: React.PointerEvent) => {
-    if (!dragId) return
-    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
-    const row = el?.closest('[data-cat-id]') as HTMLElement | null
-    const overId = row?.getAttribute('data-cat-id')
-    if (overId) reorderCategories(overId)
-  }
-
+  // Отпускание: фиксируем новый порядок и сразу сохраняем sort_order в БД.
   const endDrag = async () => {
-    if (!dragId) return
-    setDragId(null)
-    const currentOrder = categories.map((c) => c.id).join(',')
-    if (currentOrder === orderBeforeDrag.current) return
-    const ordered = categories.map((c, i) => ({ id: c.id, sort_order: i + 1 }))
-    setCategories((cs) => cs.map((c, i) => ({ ...c, sort_order: i + 1 })))
+    const d = drag
+    setDrag(null)
+    if (!d || d.overIndex === d.fromIndex) return
+    const next = categories.slice()
+    const [moved] = next.splice(d.fromIndex, 1)
+    next.splice(d.overIndex, 0, moved)
+    const reordered = next.map((c, i) => ({ ...c, sort_order: i + 1 }))
+    setCategories(reordered)
     const results = await Promise.all(
-      ordered.map((o) =>
-        supabase.from('categories').update({ sort_order: o.sort_order }).eq('id', o.id),
+      reordered.map((c) =>
+        supabase.from('categories').update({ sort_order: c.sort_order }).eq('id', c.id),
       ),
     )
     const failed = results.find((r) => r.error)
     if (failed?.error) setError(failed.error.message)
+  }
+
+  // Стиль карточки во время перетаскивания: соседи освобождают место (плавно),
+  // а активная карточка следует за пальцем и слегка увеличивается.
+  const dragStyle = (id: string, index: number): React.CSSProperties | undefined => {
+    if (!drag) return undefined
+    if (id === drag.id) {
+      return {
+        transform: `translateY(${drag.offset}px) scale(1.03)`,
+        transition: 'none',
+        position: 'relative',
+        zIndex: 30,
+      }
+    }
+    let shift = 0
+    if (drag.overIndex > drag.fromIndex && index > drag.fromIndex && index <= drag.overIndex)
+      shift = -drag.slot
+    else if (drag.overIndex < drag.fromIndex && index >= drag.overIndex && index < drag.fromIndex)
+      shift = drag.slot
+    return {
+      transform: `translateY(${shift}px)`,
+      transition: 'transform 180ms cubic-bezier(0.2, 0, 0, 1)',
+    }
   }
 
   const addCategory = async () => {
@@ -317,7 +325,7 @@ export default function Budget() {
               </span>
             </div>
 
-            {categories.map((c) =>
+            {categories.map((c, index) =>
               editingId === c.id ? (
                 <div
                   key={c.id}
@@ -355,14 +363,14 @@ export default function Budget() {
               ) : (
                 <div
                   key={c.id}
-                  data-cat-id={c.id}
                   ref={(el) => {
                     if (el) rowRefs.current.set(c.id, el)
                     else rowRefs.current.delete(c.id)
                   }}
+                  style={dragStyle(c.id, index)}
                   className={`relative flex flex-col gap-1.5 rounded-xl border bg-neutral-50 px-3 py-2.5 dark:bg-neutral-900/40 ${
-                    dragId === c.id
-                      ? 'z-10 border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
+                    drag?.id === c.id
+                      ? 'border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
                       : 'border-neutral-200 dark:border-neutral-800'
                   }`}
                 >
@@ -371,13 +379,8 @@ export default function Budget() {
                     type="button"
                     aria-label="Перетащить для смены порядка"
                     title="Перетащи, чтобы изменить порядок"
-                    onPointerDown={(e) => {
-                      e.preventDefault()
-                      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-                      orderBeforeDrag.current = categories.map((x) => x.id).join(',')
-                      setDragId(c.id)
-                    }}
-                    onPointerMove={handleDragMove}
+                    onPointerDown={(e) => startDrag(e, c.id, index)}
+                    onPointerMove={moveDrag}
                     onPointerUp={(e) => {
                       ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
                       endDrag()
@@ -406,7 +409,7 @@ export default function Budget() {
                       ⋯
                     </button>
                     {menuId === c.id && (
-                      <div className="absolute right-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                      <div className="animate-pop absolute right-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                         <button
                           type="button"
                           onClick={() => startRename(c)}

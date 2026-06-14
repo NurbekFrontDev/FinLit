@@ -29,3 +29,92 @@ html.dark body {
   background-color: #0a0a0a;
   color: #f5f5f5;
 }
+
+/* --- Единые анимации интерфейса (минималистичные, быстрые) --- */
+@keyframes fl-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fl-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fl-dialog {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Выпадающие меню, списки выбора, календари, разворачивающиеся блоки */
+.animate-pop {
+  transform-origin: top;
+  animation: fl-pop 150ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform, opacity;
+}
+
+/* Плавное появление (фон модалок) */
+.animate-fade {
+  animation: fl-fade 160ms ease-out;
+}
+
+/* Модальные окна */
+.animate-dialog {
+  animation: fl-dialog 190ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Плавная прокрутка + аккуратное поведение на мобильных.
+   Это убирает «покадровость» программных прокруток и делает скролл мягче. */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  text-rendering: optimizeLegibility;
+}
+
+/* Плавный переход между светлой и тёмной темой.
+   Класс навешивается на <html> только на момент переключения,
+   чтобы постоянные transition не нагружали hover-эффекты. */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 320ms ease,
+    border-color 320ms ease,
+    color 320ms ease,
+    fill 320ms ease,
+    stroke 320ms ease !important;
+}
+
+/* Уважение к системной настройке «уменьшить движение» */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-pop,
+  .animate-fade,
+  .animate-dialog {
+    animation: none;
+  }
+}

@@ -36,7 +36,7 @@ export default function Select({ value, onChange, options, className, placeholde
         <span className="shrink-0 text-neutral-400">▾</span>
       </button>
       {open && (
-        <div className="absolute z-30 mt-1 max-h-60 w-full min-w-max overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="animate-pop absolute z-30 mt-1 max-h-60 w-full min-w-max overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           {options.map((o) => (
             <button
               key={o.value}
