@@ -2,12 +2,15 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { useTheme } from '../lib/ThemeContext'
 import { supabase } from '../lib/supabase'
-import { formatAmountInput } from '../lib/db'
+import { formatAmountInput, POPULAR_CURRENCIES, fetchRate } from '../lib/db'
 
 type Currency = { id: string; code: string; symbol: string | null; rate_to_base: number }
 
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
+
+const presetOf = (code: string) => POPULAR_CURRENCIES.find((p) => p.code === code)
+const parseRate = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.'))
 
 export default function Settings() {
   const { user, signOut } = useAuth()
@@ -17,9 +20,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [code, setCode] = useState('')
-  const [symbol, setSymbol] = useState('')
+  const [newCode, setNewCode] = useState('')
   const [rate, setRate] = useState('')
+  const [autoBusy, setAutoBusy] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -40,18 +43,42 @@ export default function Settings() {
     }
   }, [user])
 
+  const available = POPULAR_CURRENCIES.filter(
+    (p) => !currencies.some((c) => c.code === p.code),
+  )
+
+  const autoRate = async () => {
+    if (!newCode) {
+      setError('Сначала выбери валюту из списка')
+      return
+    }
+    setAutoBusy(true)
+    const r = await fetchRate(newCode)
+    setAutoBusy(false)
+    if (r == null) {
+      setError('Не удалось получить курс автоматически — впиши вручную')
+      return
+    }
+    setRate(String(r))
+    setError(null)
+  }
+
   const addCurrency = async (e: FormEvent) => {
     e.preventDefault()
     if (!user) return
-    const c = code.trim().toUpperCase()
-    const r = Number(rate.replace(',', '.'))
-    if (!c || !r || r <= 0) {
-      setError('Укажи код валюты (напр. USD) и курс в сумах')
+    if (!newCode) {
+      setError('Выбери валюту из списка')
       return
     }
+    const r = parseRate(rate)
+    if (!r || r <= 0) {
+      setError('Укажи курс в сумах (вручную или кнопкой «Курс сейчас»)')
+      return
+    }
+    const preset = presetOf(newCode)
     const { data, error } = await supabase
       .from('currencies')
-      .insert({ user_id: user.id, code: c, symbol: symbol.trim() || null, rate_to_base: r })
+      .insert({ user_id: user.id, code: newCode, symbol: preset?.symbol ?? null, rate_to_base: r })
       .select('id, code, symbol, rate_to_base')
       .single()
     if (error || !data) {
@@ -61,14 +88,13 @@ export default function Settings() {
     setCurrencies(
       [...currencies, data as Currency].sort((a, b) => a.code.localeCompare(b.code)),
     )
-    setCode('')
-    setSymbol('')
+    setNewCode('')
     setRate('')
     setError(null)
   }
 
   const changeRate = (id: string, value: string) => {
-    const r = Number(value.replace(',', '.')) || 0
+    const r = parseRate(value) || 0
     setCurrencies((cs) => cs.map((c) => (c.id === id ? { ...c, rate_to_base: r } : c)))
   }
 
@@ -78,6 +104,21 @@ export default function Settings() {
       .update({ rate_to_base: c.rate_to_base })
       .eq('id', c.id)
     if (error) setError(error.message)
+  }
+
+  const refreshRate = async (c: Currency) => {
+    const r = await fetchRate(c.code)
+    if (r == null) {
+      setError('Не удалось обновить курс автоматически')
+      return
+    }
+    const { error } = await supabase.from('currencies').update({ rate_to_base: r }).eq('id', c.id)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setCurrencies((cs) => cs.map((x) => (x.id === c.id ? { ...x, rate_to_base: r } : x)))
+    setError(null)
   }
 
   const removeCurrency = async (id: string) => {
@@ -118,7 +159,7 @@ export default function Settings() {
         <div>
           <p className="font-medium">💱 Валюты и курс</p>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Базовая валюта — сум (UZS). Укажи, сколько сумов стоит 1 единица валюты.
+            Базовая валюта — сум (UZS). Курс = сколько сумов стоит 1 единица валюты. Можно вписать вручную или подтянуть актуальный курс кнопкой.
           </p>
         </div>
 
@@ -128,55 +169,84 @@ export default function Settings() {
           <p className="text-sm text-neutral-500">Пока добавлен только сум. Добавь валюту ниже.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {currencies.map((c) => (
-              <div key={c.id} className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-sm font-medium">{c.code}</span>
-                <span className="shrink-0 text-xs text-neutral-500">1 =</span>
-                <input
-                  inputMode="decimal"
-                  value={String(c.rate_to_base)}
-                  onChange={(e) => changeRate(c.id, e.target.value)}
-                  className="w-28 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
-                />
-                <span className="shrink-0 text-xs text-neutral-500">сум</span>
-                <button
-                  onClick={() => saveRate(c)}
-                  className="ml-auto shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-emerald-400"
-                >
-                  Сохранить
-                </button>
-                <button
-                  onClick={() => removeCurrency(c.id)}
-                  className="shrink-0 text-xs text-neutral-500 transition hover:text-red-500 dark:hover:text-red-400"
-                >
-                  Удалить
-                </button>
-              </div>
-            ))}
+            {currencies.map((c) => {
+              const p = presetOf(c.code)
+              return (
+                <div key={c.id} className="flex flex-wrap items-center gap-2">
+                  <span className="w-28 shrink-0 text-sm font-medium">
+                    {c.code} {c.symbol ?? ''}
+                    {p && <span className="text-neutral-500"> · {p.name}</span>}
+                  </span>
+                  <span className="shrink-0 text-xs text-neutral-500">1 =</span>
+                  <input
+                    inputMode="decimal"
+                    value={String(c.rate_to_base)}
+                    onChange={(e) => changeRate(c.id, e.target.value)}
+                    className="w-28 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+                  />
+                  <span className="shrink-0 text-xs text-neutral-500">сум</span>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => refreshRate(c)}
+                      title="Подтянуть актуальный курс"
+                      className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    >
+                      ↻ Курс
+                    </button>
+                    <button
+                      onClick={() => saveRate(c)}
+                      className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-neutral-950 transition hover:bg-emerald-400"
+                    >
+                      Сохранить
+                    </button>
+                    <button
+                      onClick={() => removeCurrency(c.id)}
+                      className="text-xs text-neutral-500 transition hover:text-red-500 dark:hover:text-red-400"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
         <form onSubmit={addCurrency} className="flex flex-col gap-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Код (USD)"
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              value={newCode}
+              onChange={(e) => {
+                setNewCode(e.target.value)
+                setRate('')
+                setError(null)
+              }}
               className={inputCls}
-            />
-            <input
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="Символ ($)"
-              className={inputCls}
-            />
-            <input
-              inputMode="decimal"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              placeholder="Курс в сумах"
-              className={inputCls}
-            />
+            >
+              <option value="">Выбери валюту…</option>
+              {available.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name} — {p.code} {p.symbol} ({p.country})
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <input
+                inputMode="decimal"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                placeholder="Курс в сумах"
+                className={inputCls}
+              />
+              <button
+                type="button"
+                onClick={autoRate}
+                disabled={autoBusy}
+                className="shrink-0 rounded-lg border border-emerald-500/50 px-3 py-2 text-sm text-emerald-600 transition hover:bg-emerald-500/10 disabled:opacity-60 dark:text-emerald-400"
+              >
+                {autoBusy ? '…' : '↻ Курс сейчас'}
+              </button>
+            </div>
           </div>
           {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
           <button
@@ -185,9 +255,9 @@ export default function Settings() {
           >
             Добавить валюту
           </button>
-          {rate && (
+          {newCode && parseRate(rate) > 0 && (
             <p className="text-xs text-neutral-500">
-              Предпросмотр: 1 {code.trim().toUpperCase() || 'USD'} = {formatAmountInput(rate.replace(/\D/g, ''))} сум
+              Предпросмотр: 1 {newCode} = {formatAmountInput(String(Math.round(parseRate(rate))))} сум
             </p>
           )}
         </form>

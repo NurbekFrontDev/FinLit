@@ -1,7 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { formatSum, formatAmountInput, parseAmount, monthsUntil } from '../lib/db'
+import {
+  formatSum,
+  formatAmountInput,
+  parseAmount,
+  monthsUntil,
+  formatDateHuman,
+  WISH_CATEGORIES,
+} from '../lib/db'
 
 type Goal = {
   id: string
@@ -11,11 +18,13 @@ type Goal = {
   target_date: string | null
   is_goal: boolean
   done: boolean
+  category: string | null
   created_at: string
 }
 type Contribution = { id: string; goal_id: string; amount: number; date: string }
 
-const GOAL_COLS = 'id, name, note, target_amount, target_date, is_goal, done, created_at'
+const GOAL_COLS =
+  'id, name, note, target_amount, target_date, is_goal, done, category, created_at'
 
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
@@ -25,6 +34,23 @@ const btnGhost =
   'rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
 const btnMuted =
   'text-sm text-neutral-500 transition hover:text-red-500 dark:hover:text-red-400'
+
+const chipCls = (active: boolean) =>
+  `rounded-full border px-3 py-1 text-xs transition ${
+    active
+      ? 'border-emerald-500 bg-emerald-500 font-medium text-neutral-950'
+      : 'border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+  }`
+
+const catBadgeCls = (c: string | null) => {
+  if (c === 'Обязательные') return 'bg-red-500/15 text-red-600 dark:text-red-400'
+  if (c === 'Свободные') return 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
+  return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+}
+const catPriority = (c: string | null) => {
+  const idx = WISH_CATEGORIES.indexOf((c ?? '') as never)
+  return idx === -1 ? WISH_CATEGORIES.length : idx
+}
 
 export default function Goals() {
   const { user } = useAuth()
@@ -36,7 +62,9 @@ export default function Goals() {
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [note, setNote] = useState('')
+  const [wishCategory, setWishCategory] = useState<string>('Цели и хотелки')
   const [busy, setBusy] = useState(false)
+  const [wishSort, setWishSort] = useState<'new' | 'old' | 'priority'>('priority')
 
   const [goalFormId, setGoalFormId] = useState<string | null>(null)
   const [goalTarget, setGoalTarget] = useState('')
@@ -45,6 +73,10 @@ export default function Goals() {
   const [contribFormId, setContribFormId] = useState<string | null>(null)
   const [contribAmount, setContribAmount] = useState('')
   const [contribDate, setContribDate] = useState(new Date().toISOString().slice(0, 10))
+
+  const [editContribId, setEditContribId] = useState<string | null>(null)
+  const [editContribAmount, setEditContribAmount] = useState('')
+  const [editContribDate, setEditContribDate] = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -94,6 +126,7 @@ export default function Goals() {
         name: name.trim(),
         note: note.trim() || null,
         target_amount: parseAmount(price),
+        category: wishCategory,
         is_goal: false,
         done: false,
       })
@@ -158,6 +191,33 @@ export default function Goals() {
     setContribAmount('')
   }
 
+  const startEditContrib = (c: Contribution) => {
+    setEditContribId(c.id)
+    setEditContribAmount(formatAmountInput(String(c.amount)))
+    setEditContribDate(c.date)
+    setError(null)
+  }
+
+  const saveContribution = async (id: string) => {
+    const value = parseAmount(editContribAmount)
+    if (!value) {
+      setError('Укажи сумму')
+      return
+    }
+    const { data, error } = await supabase
+      .from('goal_contributions')
+      .update({ amount: value, date: editContribDate })
+      .eq('id', id)
+      .select('id, goal_id, amount, date')
+      .single()
+    if (error || !data) {
+      setError(error?.message ?? 'Ошибка')
+      return
+    }
+    setContribs(contribs.map((c) => (c.id === id ? (data as Contribution) : c)))
+    setEditContribId(null)
+  }
+
   const removeContribution = async (id: string) => {
     const { error } = await supabase.from('goal_contributions').delete().eq('id', id)
     if (error) {
@@ -195,6 +255,16 @@ export default function Goals() {
   const wishes = goals.filter((g) => !g.is_goal && !g.done)
   const doneItems = goals.filter((g) => g.done)
 
+  const sortedWishes = [...wishes].sort((a, b) => {
+    if (wishSort === 'priority') {
+      const d = catPriority(a.category) - catPriority(b.category)
+      if (d !== 0) return d
+      return a.created_at < b.created_at ? 1 : -1
+    }
+    const cmp = a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
+    return wishSort === 'new' ? -cmp : cmp
+  })
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">🎯 Цели и желания</h1>
@@ -218,13 +288,24 @@ export default function Goals() {
             placeholder="Примерная цена (необязательно)"
             className={inputCls}
           />
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Заметка (необязательно)"
+          <select
+            value={wishCategory}
+            onChange={(e) => setWishCategory(e.target.value)}
             className={inputCls}
-          />
+          >
+            {WISH_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Заметка (необязательно)"
+          className={inputCls}
+        />
         {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
         <button
           type="submit"
@@ -243,7 +324,7 @@ export default function Goals() {
           <section className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">🎯 Активные цели</h2>
             {activeGoals.length === 0 ? (
-              <p className="text-sm text-neutral-500">Пока нет активных целей. Преврати желание в цель ниже 👇</p>
+              <p className="text-sm text-neutral-500">Пока нет активных целей.</p>
             ) : (
               activeGoals.map((g) => {
                 const saved = savedFor(g.id)
@@ -259,9 +340,16 @@ export default function Goals() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-medium">{g.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{g.name}</p>
+                          {g.category && (
+                            <span className={`rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
+                              {g.category}
+                            </span>
+                          )}
+                        </div>
                         {g.target_date && (
-                          <p className="text-xs text-neutral-500">до {g.target_date}</p>
+                          <p className="text-xs text-neutral-500">до {formatDateHuman(g.target_date)}</p>
                         )}
                       </div>
                       <span className="shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
@@ -333,22 +421,61 @@ export default function Goals() {
                     )}
 
                     {goalContribs.length > 0 && (
-                      <details className="text-xs text-neutral-500">
+                      <details className="text-sm text-neutral-500">
                         <summary className="cursor-pointer">Вклады ({goalContribs.length})</summary>
-                        <div className="mt-2 flex flex-col gap-1">
-                          {goalContribs.map((c) => (
-                            <div key={c.id} className="flex items-center justify-between">
-                              <span>
-                                {c.date} · {formatSum(Number(c.amount))}
-                              </span>
-                              <button
-                                onClick={() => removeContribution(c.id)}
-                                className="transition hover:text-red-500 dark:hover:text-red-400"
+                        <div className="mt-3 flex flex-col gap-2">
+                          {goalContribs.map((c) =>
+                            editContribId === c.id ? (
+                              <div
+                                key={c.id}
+                                className="flex flex-col gap-2 rounded-lg bg-neutral-100 p-2.5 dark:bg-neutral-800/50 sm:flex-row"
                               >
-                                Удалить
-                              </button>
-                            </div>
-                          ))}
+                                <input
+                                  inputMode="numeric"
+                                  value={editContribAmount}
+                                  onChange={(e) => setEditContribAmount(formatAmountInput(e.target.value))}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="date"
+                                  value={editContribDate}
+                                  onChange={(e) => setEditContribDate(e.target.value)}
+                                  className={inputCls}
+                                />
+                                <div className="flex gap-2">
+                                  <button onClick={() => saveContribution(c.id)} className={btnPrimary}>
+                                    Сохранить
+                                  </button>
+                                  <button onClick={() => setEditContribId(null)} className={btnGhost}>
+                                    Отмена
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                key={c.id}
+                                className="flex items-center justify-between gap-3 rounded-lg bg-neutral-100 px-3 py-2.5 text-sm dark:bg-neutral-800/50"
+                              >
+                                <span className="text-neutral-700 dark:text-neutral-300">
+                                  {formatDateHuman(c.date)} · {formatSum(Number(c.amount))}
+                                </span>
+                                <div className="flex shrink-0 gap-3">
+                                  <button
+                                    onClick={() => startEditContrib(c)}
+                                    className="text-neutral-500 transition hover:text-emerald-600 dark:hover:text-emerald-400"
+                                  >
+                                    Изменить
+                                  </button>
+                                  <button
+                                    onClick={() => removeContribution(c.id)}
+                                    className="text-neutral-500 transition hover:text-red-500 dark:hover:text-red-400"
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              </div>
+                            ),
+                          )}
                         </div>
                       </details>
                     )}
@@ -362,61 +489,82 @@ export default function Goals() {
           <section className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">🛒 Хочу купить</h2>
             {wishes.length === 0 ? (
-              <p className="text-sm text-neutral-500">Список пуст. Добавь что-нибудь сверху ☝️</p>
+              <p className="text-sm text-neutral-500">Список пуст.</p>
             ) : (
-              wishes.map((g) => (
-                <div
-                  key={g.id}
-                  className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">{g.name}</p>
-                    {g.note && <p className="text-xs text-neutral-500">{g.note}</p>}
-                    {g.target_amount > 0 && (
-                      <p className="text-xs text-neutral-500">≈ {formatSum(g.target_amount)}</p>
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-neutral-500">Сортировка:</span>
+                  <button type="button" onClick={() => setWishSort('priority')} className={chipCls(wishSort === 'priority')}>
+                    По важности
+                  </button>
+                  <button type="button" onClick={() => setWishSort('new')} className={chipCls(wishSort === 'new')}>
+                    Сначала новые
+                  </button>
+                  <button type="button" onClick={() => setWishSort('old')} className={chipCls(wishSort === 'old')}>
+                    Сначала старые
+                  </button>
+                </div>
+                {sortedWishes.map((g) => (
+                  <div
+                    key={g.id}
+                    className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{g.name}</p>
+                        {g.category && (
+                          <span className={`rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
+                            {g.category}
+                          </span>
+                        )}
+                      </div>
+                      {g.note && <p className="text-xs text-neutral-500">{g.note}</p>}
+                      {g.target_amount > 0 && (
+                        <p className="text-xs text-neutral-500">≈ {formatSum(g.target_amount)}</p>
+                      )}
+                    </div>
+                    {goalFormId === g.id ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <input
+                            inputMode="numeric"
+                            value={goalTarget}
+                            onChange={(e) => setGoalTarget(formatAmountInput(e.target.value))}
+                            placeholder="Сумма цели"
+                            className={inputCls}
+                          />
+                          <input
+                            type="date"
+                            value={goalDate}
+                            onChange={(e) => setGoalDate(e.target.value)}
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => makeGoal(g.id)} className={btnPrimary}>
+                            Сделать целью
+                          </button>
+                          <button onClick={() => setGoalFormId(null)} className={btnGhost}>
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button onClick={() => openGoalForm(g)} className={btnPrimary}>
+                          🎯 Сделать целью
+                        </button>
+                        <button onClick={() => setDone(g, true)} className={btnGhost}>
+                          ✅ Куплено
+                        </button>
+                        <button onClick={() => removeGoal(g.id)} className={btnMuted}>
+                          Удалить
+                        </button>
+                      </div>
                     )}
                   </div>
-                  {goalFormId === g.id ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <input
-                          inputMode="numeric"
-                          value={goalTarget}
-                          onChange={(e) => setGoalTarget(formatAmountInput(e.target.value))}
-                          placeholder="Сумма цели"
-                          className={inputCls}
-                        />
-                        <input
-                          type="date"
-                          value={goalDate}
-                          onChange={(e) => setGoalDate(e.target.value)}
-                          className={inputCls}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => makeGoal(g.id)} className={btnPrimary}>
-                          Сделать целью
-                        </button>
-                        <button onClick={() => setGoalFormId(null)} className={btnGhost}>
-                          Отмена
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button onClick={() => openGoalForm(g)} className={btnPrimary}>
-                        🎯 Сделать целью
-                      </button>
-                      <button onClick={() => setDone(g, true)} className={btnGhost}>
-                        ✅ Куплено
-                      </button>
-                      <button onClick={() => removeGoal(g.id)} className={btnMuted}>
-                        Удалить
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+                ))}
+              </>
             )}
           </section>
 

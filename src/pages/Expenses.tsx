@@ -8,6 +8,7 @@ import {
   formatAmountInput,
   parseAmount,
   SUBCATEGORY_PRESETS,
+  formatDateHuman,
   loadCurrencies,
   rateOf,
   BASE_CURRENCY,
@@ -408,7 +409,7 @@ export default function Expenses() {
                   <p className="font-medium">{formatSum(Number(i.amount))}</p>
                   <p className="text-xs text-neutral-500">
                     {catName(i.category_id)}
-                    {i.subcategory ? ` · ${i.subcategory}` : ''} · {i.date}
+                    {i.subcategory ? ` · ${i.subcategory}` : ''} · {formatDateHuman(i.date)}
                     {i.currency && i.currency !== BASE_CURRENCY && i.original_amount
                       ? ` · ${formatAmountInput(String(i.original_amount))} ${i.currency}`
                       : ''}

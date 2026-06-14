@@ -5,6 +5,7 @@ import {
   getOrCreateMonth,
   formatSum,
   MONTH_NAMES,
+  formatDateHuman,
   formatAmountInput,
   parseAmount,
   INCOME_SOURCE_PRESETS,
@@ -358,7 +359,7 @@ export default function Incomes() {
                 <div className="min-w-0">
                   <p className="font-medium">{formatSum(Number(i.amount))}</p>
                   <p className="text-xs text-neutral-500">
-                    {i.date}
+                    {formatDateHuman(i.date)}
                     {i.currency && i.currency !== BASE_CURRENCY && i.original_amount
                       ? ` · ${formatAmountInput(String(i.original_amount))} ${i.currency}`
                       : ''}
