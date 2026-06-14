@@ -198,7 +198,8 @@ export default function Budget() {
     setDrag(next)
   }
 
-  // Отпускание. Если не было движения — это тап, открываем меню.
+  // Отпускание. Если не было движения — ничего не делаем (это было просто касание ручки;
+  // меню теперь открывает отдельная кнопка ⋮).
   // Иначе — плавно «доводим» карточку в целевой слот (анимация), потом фиксируем порядок.
   const endDrag = (e?: React.PointerEvent) => {
     if (e) {
@@ -211,11 +212,10 @@ export default function Budget() {
     const d = dragRef.current
     if (!d) return
 
-    // Простой тап по точкам — переключаем меню категории.
+    // Не было движения — это просто касание ручки, перетаскивание не началось.
     if (!d.active) {
       dragRef.current = null
       setDrag(null)
-      setMenuId((m) => (m === d.id ? null : d.id))
       return
     }
 
@@ -368,9 +368,11 @@ export default function Budget() {
     if (mErr) setError(mErr.message)
   }
 
-  // Точки слева + выпадающее меню «Изменить / Удалить». Тап = меню, перетаскивание = порядок.
+  // Слева две отдельные кнопки: ⠿ — только перетаскивание, ⋮ — меню «Изменить / Удалить».
+  // Раньше обе функции висели на одной кнопке через захват указателя, и на телефоне
+  // одиночный тап часто терялся. Теперь жесты разделены: тап по ⋮ (обычный onClick) срабатывает всегда.
   const gripWithMenu = (c: Category, index: number) => (
-    <div className="relative shrink-0">
+    <div className="relative flex shrink-0 items-center">
       <button
         type="button"
         aria-label={t('budget.dragHint')}
@@ -382,6 +384,15 @@ export default function Budget() {
         className="cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
       >
         ⠿
+      </button>
+      <button
+        type="button"
+        aria-label={t('budget.menuLabel')}
+        title={t('budget.menuLabel')}
+        onClick={() => setMenuId((m) => (m === c.id ? null : c.id))}
+        className="px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
+      >
+        ⋮
       </button>
       {menuId === c.id && (
         <div className="animate-pop absolute left-0 top-full z-30 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
