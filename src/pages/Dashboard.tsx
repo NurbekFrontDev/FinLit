@@ -121,7 +121,7 @@ export default function Dashboard() {
 
           {actualIncome <= 0 && (
             <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-              ⚠️ {t('dash.addIncomeHint')}
+              {t('dash.addIncomeHint')}
             </p>
           )}
 

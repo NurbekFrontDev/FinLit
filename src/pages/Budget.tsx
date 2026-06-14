@@ -513,7 +513,7 @@ export default function Budget() {
                       {gripWithMenu(c, index)}
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{tr(c.name)}</span>
                       {percentField(c)}
-                      <span className="shrink-0 text-base font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                      <span className="min-w-[6rem] shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                         {formatSum((received * Number(c.percent)) / 100)}
                       </span>
                     </div>

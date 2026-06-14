@@ -210,7 +210,7 @@ export default function History() {
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="flex flex-col gap-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
-                          💰 {t('hist.incomeBySource')}
+                          {t('hist.incomeBySource')}
                         </p>
                         {d.incomeBySource.length === 0 ? (
                           <p className="text-xs text-neutral-500">{t('hist.noIncome')}</p>
@@ -225,7 +225,7 @@ export default function History() {
                       </div>
                       <div className="flex flex-col gap-2 border-t border-neutral-200 pt-4 dark:border-neutral-800 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
                         <p className="text-xs font-semibold uppercase tracking-wide text-red-500 dark:text-red-400">
-                          🛒 {t('hist.expenseBySub')}
+                          {t('hist.expenseBySub')}
                         </p>
                         {d.expenseBySub.length === 0 ? (
                           <p className="text-xs text-neutral-500">{t('hist.noExpense')}</p>

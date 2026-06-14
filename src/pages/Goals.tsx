@@ -452,7 +452,7 @@ export default function Goals() {
   // Форма записи покупки в расходы (общая для желаний и целей).
   const renderBuyForm = (g: Goal) => (
     <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3">
-      <p className="text-sm font-medium">🛒 {t('goals.toExpenses')}</p>
+      <p className="text-sm font-medium">{t('goals.toExpenses')}</p>
       <input
         inputMode="numeric"
         value={buyAmount}
@@ -501,7 +501,7 @@ export default function Goals() {
         onSubmit={addWish}
         className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
       >
-        <p className="text-sm font-medium">➕ {t('goals.addWish')}</p>
+        <p className="text-sm font-medium">{t('goals.addWish')}</p>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -552,7 +552,7 @@ export default function Goals() {
         <>
           {/* Активные цели */}
           <section className="flex flex-col gap-3">
-            <h2 className={sectionTitle}>🎯 {t('goals.active')}</h2>
+            <h2 className={sectionTitle}>{t('goals.active')}</h2>
             {activeGoals.length === 0 ? (
               <p className="text-sm text-neutral-500">{t('goals.noActive')}</p>
             ) : (
@@ -638,10 +638,10 @@ export default function Goals() {
                           }}
                           className={btnPrimary}
                         >
-                          💰 {t('goals.setAsideBtn')}
+                          {t('goals.setAsideBtn')}
                         </button>
                         <button onClick={() => openBuyForm(g)} className={btnGhost}>
-                          ✅ {t('goals.bought')}
+                          {t('goals.bought')}
                         </button>
                         <button onClick={() => removeGoal(g.id)} className={btnMuted}>
                           {t('common.delete')}
@@ -714,7 +714,7 @@ export default function Goals() {
           {/* Список желаний */}
           <section className="flex flex-col gap-3">
             <hr className="border-neutral-200 dark:border-neutral-800" />
-            <h2 className={sectionTitle}>🛒 {t('goals.wantBuy')}</h2>
+            <h2 className={sectionTitle}>{t('goals.wantBuy')}</h2>
             {wishes.length === 0 ? (
               <p className="text-sm text-neutral-500">{t('goals.emptyList')}</p>
             ) : (
@@ -789,10 +789,10 @@ export default function Goals() {
                     ) : (
                       <div className="flex flex-wrap items-center gap-3">
                         <button onClick={() => openGoalForm(g)} className={btnPrimary}>
-                          🎯 {t('goals.makeGoalBtn')}
+                          {t('goals.makeGoalBtn')}
                         </button>
                         <button onClick={() => openBuyForm(g)} className={btnGhost}>
-                          ✅ {t('goals.bought')}
+                          {t('goals.bought')}
                         </button>
                         <button onClick={() => removeGoal(g.id)} className={btnMuted}>
                           {t('common.delete')}
@@ -809,7 +809,7 @@ export default function Goals() {
           {doneItems.length > 0 && (
             <section className="flex flex-col gap-3">
               <hr className="border-neutral-200 dark:border-neutral-800" />
-              <h2 className={sectionTitle}>✅ {t('goals.done')}</h2>
+              <h2 className={sectionTitle}>{t('goals.done')}</h2>
               {doneItems.map((g) => (
                 <div
                   key={g.id}

@@ -173,13 +173,13 @@ export default function Settings() {
           onClick={toggle}
           className="rounded-lg border border-neutral-300 px-4 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
-          {theme === 'dark' ? `☀️ ${t('set.toLight')}` : `🌙 ${t('set.toDark')}`}
+          {theme === 'dark' ? t('set.toLight') : t('set.toDark')}
         </button>
       </div>
 
       {/* Валюты и курс */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
-        <p className="font-medium">💱 {t('set.currencies')}</p>
+        <p className="font-medium">{t('set.currencies')}</p>
 
         {loading ? (
           <p className="text-sm text-neutral-500">{t('common.loading')}</p>
@@ -213,7 +213,7 @@ export default function Settings() {
                       title={t('set.refreshTitle')}
                       className="shrink-0 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
                     >
-                      ↻ {t('set.refreshRate')}
+                      {t('set.refreshRate')}
                     </button>
                     <button
                       onClick={() => removeCurrency(c.id)}
@@ -257,7 +257,7 @@ export default function Settings() {
                 disabled={autoBusy}
                 className="shrink-0 rounded-lg border border-emerald-500/50 px-3 py-2 text-sm text-emerald-600 transition hover:bg-emerald-500/10 disabled:opacity-60 dark:text-emerald-400"
               >
-                {autoBusy ? '…' : `↻ ${t('set.rateNow')}`}
+                {autoBusy ? '…' : t('set.rateNow')}
               </button>
             </div>
           </div>
