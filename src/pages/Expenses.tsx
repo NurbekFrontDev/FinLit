@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
+import Combobox from '../components/Combobox'
 import {
   getOrCreateMonth,
   formatSum,
@@ -34,8 +35,12 @@ const EXPENSE_COLS =
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 
+const fmtRate = (n: number) => new Intl.NumberFormat('ru-RU').format(Math.round(n))
+
 const curLabel = (c: Currency) =>
-  c.code === BASE_CURRENCY ? 'Сум (UZS)' : `${c.code}${c.symbol ? ' ' + c.symbol : ''}`
+  c.code === BASE_CURRENCY
+    ? 'Сум (UZS)'
+    : `${c.code}${c.symbol ? ' ' + c.symbol : ''} · ${fmtRate(c.rate_to_base)} сум`
 
 const chipCls = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs transition ${
@@ -259,6 +264,11 @@ export default function Expenses() {
             ))}
           </select>
         </div>
+        {currency !== BASE_CURRENCY && (
+          <p className="text-xs text-neutral-500">
+            Курс: 1 {currency} ≈ {formatSum(rateOf(currencies, currency))}
+          </p>
+        )}
         <input
           type="date"
           value={date}
@@ -276,18 +286,12 @@ export default function Expenses() {
             </option>
           ))}
         </select>
-        <input
-          list="exp-subcats"
+        <Combobox
           value={subcategory}
-          onChange={(e) => setSubcategory(e.target.value)}
+          onChange={setSubcategory}
+          options={subOptions(categoryId)}
           placeholder="Подкатегория (напр. Интернет)"
-          className={inputCls}
         />
-        <datalist id="exp-subcats">
-          {subOptions(categoryId).map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -367,18 +371,12 @@ export default function Expenses() {
                     </option>
                   ))}
                 </select>
-                <input
-                  list="exp-subcats-edit"
+                <Combobox
                   value={editSubcategory}
-                  onChange={(e) => setEditSubcategory(e.target.value)}
+                  onChange={setEditSubcategory}
+                  options={subOptions(editCategoryId)}
                   placeholder="Подкатегория"
-                  className={inputCls}
                 />
-                <datalist id="exp-subcats-edit">
-                  {subOptions(editCategoryId).map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
                 <input
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}

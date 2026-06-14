@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
+import Combobox from '../components/Combobox'
 import {
   getOrCreateMonth,
   formatSum,
@@ -31,8 +32,12 @@ const INCOME_COLS = 'id, amount, date, description, source, currency, original_a
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 
+const fmtRate = (n: number) => new Intl.NumberFormat('ru-RU').format(Math.round(n))
+
 const curLabel = (c: Currency) =>
-  c.code === BASE_CURRENCY ? 'Сум (UZS)' : `${c.code}${c.symbol ? ' ' + c.symbol : ''}`
+  c.code === BASE_CURRENCY
+    ? 'Сум (UZS)'
+    : `${c.code}${c.symbol ? ' ' + c.symbol : ''} · ${fmtRate(c.rate_to_base)} сум`
 
 const chipCls = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs transition ${
@@ -237,24 +242,23 @@ export default function Incomes() {
             ))}
           </select>
         </div>
+        {currency !== BASE_CURRENCY && (
+          <p className="text-xs text-neutral-500">
+            Курс: 1 {currency} ≈ {formatSum(rateOf(currencies, currency))}
+          </p>
+        )}
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           className={inputCls}
         />
-        <input
-          list="income-sources"
+        <Combobox
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={setSource}
+          options={sourceOptions}
           placeholder="Источник дохода (напр. Зарплата)"
-          className={inputCls}
         />
-        <datalist id="income-sources">
-          {sourceOptions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -323,12 +327,11 @@ export default function Incomes() {
                   onChange={(e) => setEditDate(e.target.value)}
                   className={inputCls}
                 />
-                <input
-                  list="income-sources"
+                <Combobox
                   value={editSource}
-                  onChange={(e) => setEditSource(e.target.value)}
+                  onChange={setEditSource}
+                  options={sourceOptions}
                   placeholder="Источник дохода"
-                  className={inputCls}
                 />
                 <input
                   value={editDescription}

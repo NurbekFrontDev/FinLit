@@ -7,6 +7,8 @@ import {
   parseAmount,
   monthsUntil,
   formatDateHuman,
+  loadCurrencies,
+  fetchRate,
   WISH_CATEGORIES,
 } from '../lib/db'
 
@@ -26,6 +28,10 @@ type Contribution = { id: string; goal_id: string; amount: number; date: string 
 const GOAL_COLS =
   'id, name, note, target_amount, target_date, is_goal, done, category, created_at'
 
+// Валюты для ввода цены желания/цели (всё пересчитывается в сум).
+const PRICE_CURRENCIES = ['UZS', 'USD', 'RUB'] as const
+const priceCurLabel = (c: string) => (c === 'UZS' ? 'Сум' : c === 'USD' ? 'USD $' : 'RUB ₽')
+
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 const btnPrimary =
@@ -34,6 +40,7 @@ const btnGhost =
   'rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
 const btnMuted =
   'text-sm text-neutral-500 transition hover:text-red-500 dark:hover:text-red-400'
+const sectionTitle = 'text-lg font-semibold'
 
 const chipCls = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs transition ${
@@ -58,16 +65,22 @@ export default function Goals() {
   const [contribs, setContribs] = useState<Contribution[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [rates, setRates] = useState<Record<string, number>>({ UZS: 1 })
 
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
+  const [priceCurrency, setPriceCurrency] = useState<string>('UZS')
   const [note, setNote] = useState('')
   const [wishCategory, setWishCategory] = useState<string>('Цели и хотелки')
   const [busy, setBusy] = useState(false)
-  const [wishSort, setWishSort] = useState<'new' | 'old' | 'priority'>('priority')
+
+  // Мульти-сортировка: «по важности» можно совмещать с направлением по дате.
+  const [byPriority, setByPriority] = useState(true)
+  const [dateDir, setDateDir] = useState<'new' | 'old'>('new')
 
   const [goalFormId, setGoalFormId] = useState<string | null>(null)
   const [goalTarget, setGoalTarget] = useState('')
+  const [goalTargetCurrency, setGoalTargetCurrency] = useState<string>('UZS')
   const [goalDate, setGoalDate] = useState('')
 
   const [contribFormId, setContribFormId] = useState<string | null>(null)
@@ -84,7 +97,7 @@ export default function Goals() {
     ;(async () => {
       try {
         setLoading(true)
-        const [gRes, cRes] = await Promise.all([
+        const [gRes, cRes, curList] = await Promise.all([
           supabase
             .from('goals')
             .select(GOAL_COLS)
@@ -94,12 +107,24 @@ export default function Goals() {
             .from('goal_contributions')
             .select('id, goal_id, amount, date')
             .eq('user_id', user.id),
+          loadCurrencies(user.id),
         ])
         if (!active) return
         if (gRes.error) throw gRes.error
         if (cRes.error) throw cRes.error
         setGoals((gRes.data ?? []) as Goal[])
         setContribs((cRes.data ?? []) as Contribution[])
+        // Курсы для USD/RUB: берём из валют пользователя, иначе подтягиваем автоматически.
+        const map: Record<string, number> = { UZS: 1 }
+        for (const code of ['USD', 'RUB']) {
+          const found = curList.find((c) => c.code === code)
+          if (found) map[code] = Number(found.rate_to_base)
+          else {
+            const r = await fetchRate(code)
+            if (r) map[code] = r
+          }
+        }
+        if (active) setRates(map)
       } catch (e) {
         if (active) setError((e as Error).message)
       } finally {
@@ -111,6 +136,8 @@ export default function Goals() {
     }
   }, [user])
 
+  const rateFor = (code: string) => rates[code] ?? 1
+
   const savedFor = (goalId: string) =>
     contribs.filter((c) => c.goal_id === goalId).reduce((s, c) => s + Number(c.amount), 0)
 
@@ -119,13 +146,14 @@ export default function Goals() {
     if (!user || !name.trim()) return
     setBusy(true)
     setError(null)
+    const targetBase = Math.round(parseAmount(price) * rateFor(priceCurrency))
     const { data, error } = await supabase
       .from('goals')
       .insert({
         user_id: user.id,
         name: name.trim(),
         note: note.trim() || null,
-        target_amount: parseAmount(price),
+        target_amount: targetBase,
         category: wishCategory,
         is_goal: false,
         done: false,
@@ -141,17 +169,19 @@ export default function Goals() {
     setName('')
     setPrice('')
     setNote('')
+    setPriceCurrency('UZS')
   }
 
   const openGoalForm = (g: Goal) => {
     setGoalFormId(g.id)
     setGoalTarget(g.target_amount ? formatAmountInput(String(g.target_amount)) : '')
+    setGoalTargetCurrency('UZS')
     setGoalDate(g.target_date ?? '')
     setError(null)
   }
 
   const makeGoal = async (id: string) => {
-    const target = parseAmount(goalTarget)
+    const target = Math.round(parseAmount(goalTarget) * rateFor(goalTargetCurrency))
     if (!target) {
       setError('Укажи сумму цели')
       return
@@ -256,14 +286,16 @@ export default function Goals() {
   const doneItems = goals.filter((g) => g.done)
 
   const sortedWishes = [...wishes].sort((a, b) => {
-    if (wishSort === 'priority') {
+    if (byPriority) {
       const d = catPriority(a.category) - catPriority(b.category)
       if (d !== 0) return d
-      return a.created_at < b.created_at ? 1 : -1
     }
     const cmp = a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
-    return wishSort === 'new' ? -cmp : cmp
+    return dateDir === 'new' ? -cmp : cmp
   })
+
+  const wishConverted = Math.round(parseAmount(price) * rateFor(priceCurrency))
+  const goalConverted = Math.round(parseAmount(goalTarget) * rateFor(goalTargetCurrency))
 
   return (
     <div className="flex flex-col gap-6">
@@ -280,26 +312,43 @@ export default function Goals() {
           placeholder="Что хочу (напр. iPhone, визит к стоматологу)"
           className={inputCls}
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex gap-2">
           <input
             inputMode="numeric"
             value={price}
             onChange={(e) => setPrice(formatAmountInput(e.target.value))}
             placeholder="Примерная цена (необязательно)"
-            className={inputCls}
+            className={inputCls + ' flex-1'}
           />
           <select
-            value={wishCategory}
-            onChange={(e) => setWishCategory(e.target.value)}
-            className={inputCls}
+            value={priceCurrency}
+            onChange={(e) => setPriceCurrency(e.target.value)}
+            className={inputCls + ' w-28 shrink-0'}
           >
-            {WISH_CATEGORIES.map((c) => (
+            {PRICE_CURRENCIES.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {priceCurLabel(c)}
               </option>
             ))}
           </select>
         </div>
+        {priceCurrency !== 'UZS' && (
+          <p className="text-xs text-neutral-500">
+            Курс: 1 {priceCurrency} ≈ {formatSum(rateFor(priceCurrency))}
+            {price ? ` · ≈ ${formatSum(wishConverted)}` : ''}
+          </p>
+        )}
+        <select
+          value={wishCategory}
+          onChange={(e) => setWishCategory(e.target.value)}
+          className={inputCls}
+        >
+          {WISH_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -322,7 +371,7 @@ export default function Goals() {
         <>
           {/* Активные цели */}
           <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">🎯 Активные цели</h2>
+            <h2 className={sectionTitle}>🎯 Активные цели</h2>
             {activeGoals.length === 0 ? (
               <p className="text-sm text-neutral-500">Пока нет активных целей.</p>
             ) : (
@@ -487,20 +536,21 @@ export default function Goals() {
 
           {/* Список желаний */}
           <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">🛒 Хочу купить</h2>
+            <h2 className={sectionTitle}>🛒 Хочу купить</h2>
             {wishes.length === 0 ? (
               <p className="text-sm text-neutral-500">Список пуст.</p>
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs text-neutral-500">Сортировка:</span>
-                  <button type="button" onClick={() => setWishSort('priority')} className={chipCls(wishSort === 'priority')}>
+                  <button type="button" onClick={() => setByPriority((v) => !v)} className={chipCls(byPriority)}>
                     По важности
                   </button>
-                  <button type="button" onClick={() => setWishSort('new')} className={chipCls(wishSort === 'new')}>
+                  <span className="text-neutral-300 dark:text-neutral-700">|</span>
+                  <button type="button" onClick={() => setDateDir('new')} className={chipCls(dateDir === 'new')}>
                     Сначала новые
                   </button>
-                  <button type="button" onClick={() => setWishSort('old')} className={chipCls(wishSort === 'old')}>
+                  <button type="button" onClick={() => setDateDir('old')} className={chipCls(dateDir === 'old')}>
                     Сначала старые
                   </button>
                 </div>
@@ -525,21 +575,38 @@ export default function Goals() {
                     </div>
                     {goalFormId === g.id ? (
                       <div className="flex flex-col gap-2">
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="flex gap-2">
                           <input
                             inputMode="numeric"
                             value={goalTarget}
                             onChange={(e) => setGoalTarget(formatAmountInput(e.target.value))}
                             placeholder="Сумма цели"
-                            className={inputCls}
+                            className={inputCls + ' flex-1'}
                           />
-                          <input
-                            type="date"
-                            value={goalDate}
-                            onChange={(e) => setGoalDate(e.target.value)}
-                            className={inputCls}
-                          />
+                          <select
+                            value={goalTargetCurrency}
+                            onChange={(e) => setGoalTargetCurrency(e.target.value)}
+                            className={inputCls + ' w-28 shrink-0'}
+                          >
+                            {PRICE_CURRENCIES.map((c) => (
+                              <option key={c} value={c}>
+                                {priceCurLabel(c)}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+                        {goalTargetCurrency !== 'UZS' && (
+                          <p className="text-xs text-neutral-500">
+                            Курс: 1 {goalTargetCurrency} ≈ {formatSum(rateFor(goalTargetCurrency))}
+                            {goalTarget ? ` · ≈ ${formatSum(goalConverted)}` : ''}
+                          </p>
+                        )}
+                        <input
+                          type="date"
+                          value={goalDate}
+                          onChange={(e) => setGoalDate(e.target.value)}
+                          className={inputCls}
+                        />
                         <div className="flex gap-2">
                           <button onClick={() => makeGoal(g.id)} className={btnPrimary}>
                             Сделать целью
@@ -571,7 +638,7 @@ export default function Goals() {
           {/* Достигнуто */}
           {doneItems.length > 0 && (
             <section className="flex flex-col gap-2">
-              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">✅ Достигнуто / куплено</h2>
+              <h2 className={sectionTitle}>✅ Достигнуто / куплено</h2>
               {doneItems.map((g) => (
                 <div
                   key={g.id}
