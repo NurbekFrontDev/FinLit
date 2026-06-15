@@ -9,9 +9,11 @@ import {
   loadCushionStats,
   loadCushionMonths,
   saveCushionMonths,
+  loadSavingsPots,
   isSavingsCategory,
   DEFAULT_CUSHION_MONTHS,
   type CushionStats,
+  type SavingsPotsStats,
 } from '../lib/db'
 
 type Category = { id: string; name: string; percent: number; sort_order: number }
@@ -49,6 +51,7 @@ export default function Dashboard() {
   const [rows, setRows] = useState<Row[]>([])
   const [cushionMonths, setCushionMonths] = useState(DEFAULT_CUSHION_MONTHS)
   const [cushion, setCushion] = useState<CushionStats | null>(null)
+  const [pots, setPots] = useState<SavingsPotsStats>({ cushion: 0, free: 0, total: 0 })
 
   useEffect(() => {
     if (!user) return
@@ -142,9 +145,23 @@ export default function Dashboard() {
     }
   }, [user, cushionMonths])
 
-  const saved = rows
-    .filter((r) => r.name === 'Сбережения' || r.name === 'Инвестиции')
-    .reduce((s, r) => s + r.fact, 0)
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    ;(async () => {
+      try {
+        const p = await loadSavingsPots(user.id)
+        if (active) setPots(p)
+      } catch {
+        if (active) setPots({ cushion: 0, free: 0, total: 0 })
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [user])
+
+  // «Уже отложено» теперь берём из реального баланса копилок (loadSavingsPots).
 
   return (
     <div className="flex flex-col gap-5">
@@ -160,7 +177,7 @@ export default function Dashboard() {
             <Card label={t('dash.incomeGoal')} value={formatSum(plannedIncome)} />
             <Card label={t('dash.incomeFact')} value={formatSum(actualIncome)} accent="text-emerald-600 dark:text-emerald-400" />
             <Card label={t('dash.expenseFact')} value={formatSum(totalSpent)} accent="text-red-500 dark:text-red-400" />
-            <Card label={t('dash.saved')} value={formatSum(saved)} accent="text-emerald-600 dark:text-emerald-400" />
+            <Card label={t('dash.saved')} value={formatSum(pots.total)} accent="text-emerald-600 dark:text-emerald-400" />
           </div>
 
           {actualIncome <= 0 && (
@@ -192,21 +209,37 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-            {cushion && cushion.monthsUsed > 0 ? (
+            <p className="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              {formatSum(pots.cushion)}
+            </p>
+            {cushion && cushion.recommended > 0 ? (
               <>
-                <p className="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-                  {formatSum(cushion.recommended)}
-                </p>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={ { width: `${Math.min((pots.cushion / cushion.recommended) * 100, 100)}%` } }
+                  />
+                </div>
                 <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('cushion.basis', { avg: formatSum(cushion.avgMonthly), n: cushionMonths })}
+                  {t('cushion.progress', { rec: formatSum(cushion.recommended) })}
                 </p>
                 <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('cushion.monthsUsed', { n: cushion.monthsUsed })}
+                  {t('cushion.basis', { avg: formatSum(cushion.avgMonthly), n: cushionMonths })}
                 </p>
               </>
             ) : (
-              <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{t('cushion.noData')}</p>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t('cushion.noData')}</p>
             )}
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{t('savings.freeTitle')}</span>
+              <span className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                {formatSum(pots.free)}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t('savings.freeHint')}</p>
           </div>
 
           <div className="flex flex-col gap-3">

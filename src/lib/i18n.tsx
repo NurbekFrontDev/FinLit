@@ -87,6 +87,9 @@ const UI: Record<Lang, Record<string, string>> = {
     'cushion.monthsUsed': 'Расчёт по данным за {n} мес',
     'cushion.hint': 'Столько денег стоит держать про запас, чтобы прожить {n} мес без дохода. Сумма растёт автоматически вместе с твоими расходами.',
     'cushion.noData': 'Добавь расходы за несколько месяцев, и здесь появится рекомендуемый размер подушки.',
+    'cushion.progress': 'Рекомендуемый размер: {rec}',
+    'savings.freeTitle': '🐷 Накопления',
+    'savings.freeHint': 'Свободные деньги на будущее: всё, что отложено в Сбережения и Инвестиции, кроме подушки. Уменьшается, когда оплачиваешь что-то «из накоплений».',
 
     'budget.title': 'Бюджет / План',
     'budget.received': 'Получено в этом месяце',
@@ -124,6 +127,10 @@ const UI: Record<Lang, Record<string, string>> = {
     'exp.addBtn': 'Добавить расход',
     'exp.empty': 'За этот период расходов нет.',
     'exp.deleted': '(удалена)',
+    'exp.fromPot': 'Оплачено из накоплений',
+    'exp.fromPotHint': 'Спишется из выбранной копилки — её баланс уменьшится.',
+    'exp.fromCushion': 'из подушки',
+    'exp.fromFree': 'из накоплений',
 
     'goals.title': 'Цели и желания',
     'goals.addWish': '➕ Добавить в список желаний',
@@ -338,6 +345,9 @@ const UI: Record<Lang, Record<string, string>> = {
     'cushion.monthsUsed': 'Based on {n} months of data',
     'cushion.hint': 'This is how much to keep aside to live {n} months without income. It grows automatically as your expenses grow.',
     'cushion.noData': 'Add expenses for a few months and the recommended fund size will appear here.',
+    'cushion.progress': 'Recommended size: {rec}',
+    'savings.freeTitle': '🐷 Savings',
+    'savings.freeHint': 'Free money for the future: everything set aside in Savings and Investments except the cushion. It goes down when you pay for something “from savings”.',
 
     'budget.title': 'Budget / Plan',
     'budget.received': 'Received this month',
@@ -375,6 +385,10 @@ const UI: Record<Lang, Record<string, string>> = {
     'exp.addBtn': 'Add expense',
     'exp.empty': 'No expenses for this period.',
     'exp.deleted': '(deleted)',
+    'exp.fromPot': 'Paid from savings',
+    'exp.fromPotHint': 'It will be deducted from the chosen pot — its balance goes down.',
+    'exp.fromCushion': 'from cushion',
+    'exp.fromFree': 'from savings',
 
     'goals.title': 'Goals & wishes',
     'goals.addWish': '➕ Add to wishlist',

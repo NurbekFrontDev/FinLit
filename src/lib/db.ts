@@ -387,6 +387,71 @@ export function isCushionExcludedCategory(name: string | null | undefined): bool
   return isSavingsCategory(name) || isDebtCategory(name)
 }
 
+// ===== Копилки: подушка безопасности и свободные накопления =====
+// Две копилки с реальным балансом за всё время:
+//  • cushion — подушка безопасности (пополняется расходами в Сбережениях с
+//    подкатегорией «Подушка безопасности»);
+//  • free    — свободные накопления (остальные Сбережения + все Инвестиции).
+// Баланс копилки = пополнения − снятия.
+//   Пополнение = расход в категории Сбережения/Инвестиции (paid_from_pot = null).
+//   Снятие     = любой расход с пометкой paid_from_pot (трата отложенных денег);
+//                он остаётся реальным расходом, но уменьшает баланс копилки.
+export type SavingsPot = 'cushion' | 'free'
+
+// Подкатегория, которая считается пополнением именно подушки безопасности.
+export const CUSHION_SUBCATEGORY = 'Подушка безопасности'
+
+export function isCushionSubcategory(sub: string | null | undefined): boolean {
+  return !!sub && sub.trim() === CUSHION_SUBCATEGORY
+}
+
+export type SavingsPotsStats = {
+  cushion: number // баланс подушки безопасности
+  free: number    // баланс свободных накоплений
+  total: number   // cushion + free («Уже отложено» всего)
+}
+
+// Считает реальные балансы копилок по всем расходам пользователя (за всё время).
+export async function loadSavingsPots(userId: string): Promise<SavingsPotsStats> {
+  const { data: cats, error: eCats } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', userId)
+  if (eCats) throw eCats
+  const savingsIds = new Set(
+    ((cats ?? []) as { id: string; name: string }[])
+      .filter((c) => isSavingsCategory(c.name))
+      .map((c) => c.id),
+  )
+
+  const { data: exps, error } = await supabase
+    .from('expenses')
+    .select('amount, category_id, subcategory, paid_from_pot')
+    .eq('user_id', userId)
+  if (error) throw error
+
+  let cushion = 0
+  let free = 0
+  for (const ex of (exps ?? []) as {
+    amount: number
+    category_id: string | null
+    subcategory: string | null
+    paid_from_pot: string | null
+  }[]) {
+    const a = Number(ex.amount) || 0
+    if (ex.paid_from_pot === 'cushion') {
+      cushion -= a // снятие из подушки
+    } else if (ex.paid_from_pot === 'free') {
+      free -= a // снятие из накоплений
+    } else if (ex.category_id && savingsIds.has(ex.category_id)) {
+      // пополнение: подушка — по подкатегории, остальные накопления — свободные
+      if (isCushionSubcategory(ex.subcategory)) cushion += a
+      else free += a
+    }
+  }
+  return { cushion, free, total: cushion + free }
+}
+
 // ===== Подушка безопасности =====
 // Считает среднемесячные расходы за последние N месяцев и рекомендуемый размер
 // подушки (среднее в месяц, умноженное на число месяцев покрытия).
