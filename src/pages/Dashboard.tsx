@@ -198,9 +198,6 @@ export default function Dashboard() {
                 <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
                   {t('cushion.monthsUsed', { n: cushion.monthsUsed })}
                 </p>
-                <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('cushion.hint', { n: cushionMonths })}
-                </p>
               </>
             ) : (
               <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{t('cushion.noData')}</p>

@@ -70,6 +70,21 @@ const catPriority = (c: string | null) => {
   return idx === -1 ? WISH_CATEGORIES.length : idx
 }
 
+// Нематериальные цели нельзя «купить» — их достигают (учёба, лечение, накопления).
+const NON_PURCHASABLE = [
+  'учёб', 'учеб', 'образов', 'обучен', 'курс', 'универ', 'диплом', 'школ',
+  'лечен', 'операц', 'реабилит',
+  'накопл', 'накопить', 'сбереж', 'подушк', 'фонд', 'депозит', 'вклад',
+  'пенси', 'инвест', 'долг', 'кредит', 'ипотек',
+]
+
+// true — материальная покупка (гаджет, вещь): кнопка «Куплено».
+// false — нематериальная цель (учёба, лечение, накопление): кнопка «Достигнуто».
+const isPurchasable = (g: Goal) => {
+  const text = (g.name + ' ' + (g.note ?? '')).toLowerCase()
+  return !NON_PURCHASABLE.some((k) => text.includes(k))
+}
+
 export default function Goals() {
   const { user } = useAuth()
   const { t, tr } = useLang()
@@ -628,9 +643,15 @@ export default function Goals() {
             >
               {t('goals.setAsideBtn')}
             </button>
-            <button onClick={() => openBuyForm(g)} className={btnGhost}>
-              {t('goals.bought')}
-            </button>
+            {isPurchasable(g) ? (
+              <button onClick={() => openBuyForm(g)} className={btnGhost}>
+                {t('goals.bought')}
+              </button>
+            ) : (
+              <button onClick={() => setDone(g, true)} className={btnGhost}>
+                {t('goals.achieved')}
+              </button>
+            )}
             {g.is_primary ? (
               <button onClick={() => unsetPrimary(g.id)} className={btnGhost}>
                 {t('goals.unsetPrimary')}
@@ -752,7 +773,6 @@ export default function Goals() {
           {/* Распределение категории «Цели» (80/20) */}
           <section className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
             <h2 className={sectionTitle}>{t('goals.split')}</h2>
-            <p className="text-xs text-neutral-500">{t('goals.splitHint', { a: split, b: 100 - split })}</p>
             {goalsCat ? (
               <>
                 <p className="text-sm">{t('goals.goalsBudget', { v: formatSum(goalsBudget) })}</p>
@@ -876,9 +896,15 @@ export default function Goals() {
                         <button onClick={() => openGoalForm(g)} className={btnPrimary}>
                           {t('goals.makeGoalBtn')}
                         </button>
-                        <button onClick={() => openBuyForm(g)} className={btnGhost}>
-                          {t('goals.bought')}
-                        </button>
+                        {isPurchasable(g) ? (
+                          <button onClick={() => openBuyForm(g)} className={btnGhost}>
+                            {t('goals.bought')}
+                          </button>
+                        ) : (
+                          <button onClick={() => setDone(g, true)} className={btnGhost}>
+                            {t('goals.achieved')}
+                          </button>
+                        )}
                         <button onClick={() => removeGoal(g.id)} className={btnMuted}>
                           {t('common.delete')}
                         </button>

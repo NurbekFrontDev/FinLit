@@ -539,9 +539,9 @@ export default function Budget() {
                 >
                   <div className="flex items-center gap-2">
                     {grip(c, index)}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{tr(c.name)}</span>
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{tr(c.name)}</span>
                     {percentField(c)}
-                    <span className="min-w-[6rem] shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <span className="min-w-[5rem] shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                       {formatSum((received * Number(c.percent)) / 100)}
                     </span>
                     {menuButton(c)}
