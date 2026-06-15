@@ -368,23 +368,26 @@ export default function Budget() {
     if (mErr) setError(mErr.message)
   }
 
-  // Слева две отдельные кнопки: ⠿ — только перетаскивание, ⋮ — меню «Изменить / Удалить».
-  // Раньше обе функции висели на одной кнопке через захват указателя, и на телефоне
-  // одиночный тап часто терялся. Теперь жесты разделены: тап по ⋮ (обычный onClick) срабатывает всегда.
-  const gripWithMenu = (c: Category, index: number) => (
-    <div className="relative flex shrink-0 items-center">
-      <button
-        type="button"
-        aria-label={t('budget.dragHint')}
-        title={t('budget.dragHint')}
-        onPointerDown={(e) => startDrag(e, c.id, index)}
-        onPointerMove={moveDrag}
-        onPointerUp={(e) => endDrag(e)}
-        onPointerCancel={(e) => endDrag(e)}
-        className="cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
-      >
-        ⠿
-      </button>
+  // Ручка слева — только перетаскивание (изменить порядок).
+  const grip = (c: Category, index: number) => (
+    <button
+      type="button"
+      aria-label={t('budget.dragHint')}
+      title={t('budget.dragHint')}
+      onPointerDown={(e) => startDrag(e, c.id, index)}
+      onPointerMove={moveDrag}
+      onPointerUp={(e) => endDrag(e)}
+      onPointerCancel={(e) => endDrag(e)}
+      className="shrink-0 cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
+    >
+      ⠿
+    </button>
+  )
+
+  // Кнопка меню справа — «Изменить / Удалить» (обычный onClick — надёжно на тапе).
+  // Меню раскрывается от правого края, чтобы не уезжать за экран.
+  const menuButton = (c: Category) => (
+    <div className="relative shrink-0">
       <button
         type="button"
         aria-label={t('budget.menuLabel')}
@@ -395,7 +398,7 @@ export default function Budget() {
         ⋮
       </button>
       {menuId === c.id && (
-        <div className="animate-pop absolute left-0 top-full z-30 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+        <div className="animate-pop absolute right-0 top-full z-30 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
           <button
             type="button"
             onClick={() => startRename(c)}
@@ -531,22 +534,24 @@ export default function Budget() {
                   {design === 'a' ? (
                     // Вариант A — одна строка: точки · название · процент (мелко) · сумма (крупно).
                     <div className="flex items-center gap-2">
-                      {gripWithMenu(c, index)}
+                      {grip(c, index)}
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{tr(c.name)}</span>
                       {percentField(c)}
                       <span className="min-w-[6rem] shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                         {formatSum((received * Number(c.percent)) / 100)}
                       </span>
+                      {menuButton(c)}
                     </div>
                   ) : (
                     // Вариант B — две строки: сверху крупная сумма, снизу мелкий процент.
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2">
-                        {gripWithMenu(c, index)}
+                        {grip(c, index)}
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">{tr(c.name)}</span>
                         <span className="shrink-0 text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                           {formatSum((received * Number(c.percent)) / 100)}
                         </span>
+                        {menuButton(c)}
                       </div>
                       <div className="flex items-center gap-1.5 pl-7">{percentField(c)}</div>
                     </div>
