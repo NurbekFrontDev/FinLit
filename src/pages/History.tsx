@@ -165,7 +165,7 @@ export default function History() {
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-semibold">🗓️ {t('hist.title')}</h1>
 
-      <PeriodFilter onChange={setPeriod} />
+      <PeriodFilter onChange={setPeriod} modes={['month', 'year', 'all', 'range']} />
 
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>

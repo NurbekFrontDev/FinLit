@@ -48,8 +48,15 @@ function weekLabel(s: Date, e: Date) {
 }
 
 // Переключатель периода: День / Неделя / Месяц / Год / Всё / Период.
-export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) => void }) {
+export default function PeriodFilter({
+  onChange,
+  modes,
+}: {
+  onChange: (v: PeriodValue) => void
+  modes?: Mode[]
+}) {
   const { t } = useLang()
+  const shownModes = modes ? MODES.filter((m) => modes.includes(m.id)) : MODES
   const todayISO = iso(new Date())
   const [mode, setMode] = useState<Mode>('month')
   const [anchor, setAnchor] = useState(todayISO)
@@ -111,7 +118,7 @@ export default function PeriodFilter({ onChange }: { onChange: (v: PeriodValue) 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
       <div className="flex flex-wrap gap-2">
-        {MODES.map((m) => (
+        {shownModes.map((m) => (
           <button
             key={m.id}
             type="button"
