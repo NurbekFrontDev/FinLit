@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLang } from '../lib/i18n'
+import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
 
-// Напоминалка о бэкапе раз в месяц.
-// Дата последнего бэкапа и «отложить» хранятся в localStorage (на этом устройстве).
-const BACKUP_KEY = 'finlit_last_backup'
-const SNOOZE_KEY = 'finlit_backup_snooze'
+// Напоминалка о бэкапе раз в 30 дней.
+// Дата последнего бэкапа и «отложить» хранятся В БД (таблица app_settings),
+// поэтому состояние одинаковое на телефоне и на ПК.
 const PERIOD_DAYS = 30
 const SNOOZE_DAYS = 3
 const TABLES = 'incomes, expenses, goals, goal_contributions, currencies, months, categories'
@@ -14,35 +15,73 @@ function daysBetween(a: Date, b: Date): number {
   return Math.floor((a.getTime() - b.getTime()) / 86400000)
 }
 
-function computeShouldShow(): boolean {
-  const now = new Date()
-  const snooze = localStorage.getItem(SNOOZE_KEY)
-  if (snooze && new Date(snooze).getTime() > now.getTime()) return false
-  const last = localStorage.getItem(BACKUP_KEY)
-  if (!last) return true
-  return daysBetween(now, new Date(last)) >= PERIOD_DAYS
-}
-
 const codeCls = 'rounded bg-neutral-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800'
 
 export default function BackupReminder() {
   const { t } = useLang()
-  const [visible, setVisible] = useState(computeShouldShow)
+  const { user } = useAuth()
+  const [visible, setVisible] = useState(false)
   const [open, setOpen] = useState(false)
+
+  // При заходе спрашиваем БД: пора ли показывать напоминание.
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('last_backup_at, backup_snooze_until')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!active) return
+      // Таблицы может ещё не быть (миграция не применена) — просто не показываем.
+      if (error) return
+      const now = new Date()
+      const snooze = data?.backup_snooze_until
+      if (snooze && new Date(snooze).getTime() > now.getTime()) return
+      const last = data?.last_backup_at
+      if (!last) {
+        setVisible(true)
+        return
+      }
+      if (daysBetween(now, new Date(last)) >= PERIOD_DAYS) setVisible(true)
+    })()
+    return () => {
+      active = false
+    }
+  }, [user])
 
   if (!visible) return null
 
-  const markDone = () => {
-    localStorage.setItem(BACKUP_KEY, new Date().toISOString())
-    localStorage.removeItem(SNOOZE_KEY)
+  // «Готово» — записываем дату бэкапа в БД и сбрасываем «отложить».
+  const markDone = async () => {
     setVisible(false)
+    if (!user) return
+    await supabase.from('app_settings').upsert(
+      {
+        user_id: user.id,
+        last_backup_at: new Date().toISOString(),
+        backup_snooze_until: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
   }
 
-  const snoozeLater = () => {
+  // «Позже» — прячем напоминалку на несколько дней (тоже в БД).
+  const snoozeLater = async () => {
+    setVisible(false)
+    if (!user) return
     const until = new Date()
     until.setDate(until.getDate() + SNOOZE_DAYS)
-    localStorage.setItem(SNOOZE_KEY, until.toISOString())
-    setVisible(false)
+    await supabase.from('app_settings').upsert(
+      {
+        user_id: user.id,
+        backup_snooze_until: until.toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
   }
 
   return (
