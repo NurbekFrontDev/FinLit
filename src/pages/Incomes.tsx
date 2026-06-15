@@ -2,7 +2,6 @@ import { Fragment, useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import Combobox from '../components/Combobox'
-import Select from '../components/Select'
 import DatePicker from '../components/DatePicker'
 import PeriodFilter, { type PeriodValue } from '../components/PeriodFilter'
 import { useLang } from '../lib/i18n'
@@ -17,10 +16,6 @@ import {
   effectivePresets,
   renamePreset,
   deletePreset,
-  loadCurrencies,
-  rateOf,
-  BASE_CURRENCY,
-  type Currency,
 } from '../lib/db'
 
 type Income = {
@@ -29,12 +24,10 @@ type Income = {
   date: string
   description: string | null
   source: string | null
-  currency: string | null
-  original_amount: number | null
   created_at: string
 }
 
-const INCOME_COLS = 'id, amount, date, description, source, currency, original_amount, created_at'
+const INCOME_COLS = 'id, amount, date, description, source, created_at'
 
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
@@ -51,20 +44,14 @@ export default function Incomes() {
   const { t, tr } = useLang()
   const todayISO = new Date().toISOString().slice(0, 10)
 
-  // В списке показываем только валюту (курс — серой строкой ниже).
-  const curLabel = (c: Currency) =>
-    c.code === BASE_CURRENCY ? `${tr('Сум')} (UZS)` : `${c.code}${c.symbol ? ' ' + c.symbol : ''}`
-
   const [period, setPeriod] = useState<PeriodValue | null>(null)
   const [items, setItems] = useState<Income[]>([])
-  const [currencies, setCurrencies] = useState<Currency[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortOrder, setSortOrder] = useState<'new' | 'old'>('new')
 
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO)
-  const [currency, setCurrency] = useState(BASE_CURRENCY)
   const [source, setSource] = useState('')
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
@@ -72,17 +59,8 @@ export default function Incomes() {
   const [editId, setEditId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
-  const [editCurrency, setEditCurrency] = useState(BASE_CURRENCY)
   const [editSource, setEditSource] = useState('')
   const [editDescription, setEditDescription] = useState('')
-
-  // Справочник валют грузим один раз.
-  useEffect(() => {
-    if (!user) return
-    loadCurrencies(user.id)
-      .then(setCurrencies)
-      .catch(() => {})
-  }, [user])
 
   // Записи грузим по диапазону дат выбранного периода.
   useEffect(() => {
@@ -112,8 +90,6 @@ export default function Incomes() {
   }, [user, period?.start, period?.end])
 
   const total = items.reduce((s, i) => s + Number(i.amount), 0)
-
-  const currencyOptions = currencies.map((c) => ({ value: c.code, label: curLabel(c) }))
 
   const sortedItems = [...items].sort((a, b) => {
     const cmp =
@@ -167,7 +143,6 @@ export default function Incomes() {
       setError(t('common.enterPositive'))
       return
     }
-    const base = Math.round(original * rateOf(currencies, currency))
     setBusy(true)
     setError(null)
     const d = new Date(date + 'T00:00:00')
@@ -177,9 +152,7 @@ export default function Incomes() {
       .insert({
         user_id: user.id,
         month_id: m.id,
-        amount: base,
-        original_amount: original,
-        currency,
+        amount: original,
         date,
         source: source || null,
         description: description || null,
@@ -199,9 +172,8 @@ export default function Incomes() {
 
   const startEdit = (i: Income) => {
     setEditId(i.id)
-    setEditAmount(formatAmountInput(String(i.original_amount ?? i.amount)))
+    setEditAmount(formatAmountInput(String(i.amount)))
     setEditDate(i.date)
-    setEditCurrency(i.currency ?? BASE_CURRENCY)
     setEditSource(i.source ?? '')
     setEditDescription(i.description ?? '')
     setError(null)
@@ -213,13 +185,10 @@ export default function Incomes() {
       setError(t('common.enterPositive'))
       return
     }
-    const base = Math.round(original * rateOf(currencies, editCurrency))
     const { data, error } = await supabase
       .from('incomes')
       .update({
-        amount: base,
-        original_amount: original,
-        currency: editCurrency,
+        amount: original,
         date: editDate,
         source: editSource || null,
         description: editDescription || null,
@@ -264,21 +233,13 @@ export default function Incomes() {
         onSubmit={addIncome}
         className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            inputMode="numeric"
-            value={amount}
-            onChange={(e) => setAmount(formatAmountInput(e.target.value))}
-            placeholder={t('common.amount')}
-            className={inputCls}
-          />
-          <Select value={currency} onChange={setCurrency} options={currencyOptions} />
-        </div>
-        {currency !== BASE_CURRENCY && (
-          <p className="text-xs text-neutral-500">
-            {t('inc.rate', { c: currency, v: formatSum(rateOf(currencies, currency)) })}
-          </p>
-        )}
+        <input
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(formatAmountInput(e.target.value))}
+          placeholder={t('common.amount')}
+          className={inputCls}
+        />
         <DatePicker value={date} onChange={setDate} />
         <Combobox
           value={source}
@@ -294,11 +255,6 @@ export default function Incomes() {
           placeholder={t('common.descOptional')}
           className={inputCls}
         />
-        {currency !== BASE_CURRENCY && amount && (
-          <p className="text-xs text-neutral-500">
-            {t('inc.convApprox', { v: formatSum(parseAmount(amount) * rateOf(currencies, currency)), by: t('common.byRate') })}
-          </p>
-        )}
         {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
         <button
           type="submit"
@@ -335,16 +291,13 @@ export default function Incomes() {
                 key={i.id}
                 className="flex flex-col gap-3 rounded-xl border border-emerald-500/40 bg-neutral-50 px-4 py-3 dark:bg-neutral-900/40"
               >
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <input
-                    inputMode="numeric"
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(formatAmountInput(e.target.value))}
-                    placeholder={t('common.amount')}
-                    className={inputCls}
-                  />
-                  <Select value={editCurrency} onChange={setEditCurrency} options={currencyOptions} />
-                </div>
+                <input
+                  inputMode="decimal"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(formatAmountInput(e.target.value))}
+                  placeholder={t('common.amount')}
+                  className={inputCls}
+                />
                 <DatePicker value={editDate} onChange={setEditDate} />
                 <Combobox
                   value={editSource}
@@ -384,9 +337,6 @@ export default function Incomes() {
                   <p className="font-medium">{formatSum(Number(i.amount))}</p>
                   <p className="text-xs text-neutral-500">
                     {formatDateHuman(i.date)}
-                    {i.currency && i.currency !== BASE_CURRENCY && i.original_amount
-                      ? ` · ${formatAmountInput(String(i.original_amount))} ${i.currency}`
-                      : ''}
                     {i.source ? ` · ${tr(i.source)}` : ''}
                     {i.description ? ` · ${i.description}` : ''}
                   </p>

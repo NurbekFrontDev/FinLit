@@ -17,10 +17,6 @@ import {
   renamePreset,
   deletePreset,
   formatDateHuman,
-  loadCurrencies,
-  rateOf,
-  BASE_CURRENCY,
-  type Currency,
 } from '../lib/db'
 
 type Category = { id: string; name: string; archived?: boolean }
@@ -31,13 +27,11 @@ type Expense = {
   description: string | null
   category_id: string | null
   subcategory: string | null
-  currency: string | null
-  original_amount: number | null
   created_at: string
 }
 
 const EXPENSE_COLS =
-  'id, amount, date, description, category_id, subcategory, currency, original_amount, created_at'
+  'id, amount, date, description, category_id, subcategory, created_at'
 
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
@@ -54,14 +48,9 @@ export default function Expenses() {
   const { t, tr } = useLang()
   const todayISO = new Date().toISOString().slice(0, 10)
 
-  // В списке показываем только валюту (курс — серой строкой ниже).
-  const curLabel = (c: Currency) =>
-    c.code === BASE_CURRENCY ? `${tr('Сум')} (UZS)` : `${c.code}${c.symbol ? ' ' + c.symbol : ''}`
-
   const [period, setPeriod] = useState<PeriodValue | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [items, setItems] = useState<Expense[]>([])
-  const [currencies, setCurrencies] = useState<Currency[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortOrder, setSortOrder] = useState<'new' | 'old'>('new')
@@ -69,7 +58,6 @@ export default function Expenses() {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO)
   const [categoryId, setCategoryId] = useState('')
-  const [currency, setCurrency] = useState(BASE_CURRENCY)
   const [subcategory, setSubcategory] = useState('')
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
@@ -78,21 +66,19 @@ export default function Expenses() {
   const [editAmount, setEditAmount] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editCategoryId, setEditCategoryId] = useState('')
-  const [editCurrency, setEditCurrency] = useState(BASE_CURRENCY)
   const [editSubcategory, setEditSubcategory] = useState('')
   const [editDescription, setEditDescription] = useState('')
 
-  // Категории и валюты грузим один раз.
+  // Категории грузим один раз.
   useEffect(() => {
     if (!user) return
     let active = true
     ;(async () => {
-      const [catRes, curList] = await Promise.all([
-        supabase.from('categories').select('id, name, archived').order('sort_order'),
-        loadCurrencies(user.id),
-      ])
+      const catRes = await supabase
+        .from('categories')
+        .select('id, name, archived')
+        .order('sort_order')
       if (!active) return
-      if (curList) setCurrencies(curList)
       const cats = (catRes.data ?? []) as Category[]
       setCategories(cats)
       setCategoryId((prev) => prev || (cats[0]?.id ?? ''))
@@ -137,7 +123,6 @@ export default function Expenses() {
 
   const total = items.reduce((s, i) => s + Number(i.amount), 0)
 
-  const currencyOptions = currencies.map((c) => ({ value: c.code, label: curLabel(c) }))
   const categoryOptions = categories.filter((c) => !c.archived).map((c) => ({ value: c.id, label: tr(c.name) }))
 
   const sortedItems = [...items].sort((a, b) => {
@@ -215,7 +200,6 @@ export default function Expenses() {
       setError(t('common.enterPositive'))
       return
     }
-    const base = Math.round(original * rateOf(currencies, currency))
     setBusy(true)
     setError(null)
     const d = new Date(date + 'T00:00:00')
@@ -227,9 +211,7 @@ export default function Expenses() {
         month_id: m.id,
         category_id: categoryId || null,
         subcategory: subcategory || null,
-        amount: base,
-        original_amount: original,
-        currency,
+        amount: original,
         date,
         description: description || null,
       })
@@ -248,10 +230,9 @@ export default function Expenses() {
 
   const startEdit = (i: Expense) => {
     setEditId(i.id)
-    setEditAmount(formatAmountInput(String(i.original_amount ?? i.amount)))
+    setEditAmount(formatAmountInput(String(i.amount)))
     setEditDate(i.date)
     setEditCategoryId(i.category_id ?? '')
-    setEditCurrency(i.currency ?? BASE_CURRENCY)
     setEditSubcategory(i.subcategory ?? '')
     setEditDescription(i.description ?? '')
     setError(null)
@@ -263,13 +244,10 @@ export default function Expenses() {
       setError(t('common.enterPositive'))
       return
     }
-    const base = Math.round(original * rateOf(currencies, editCurrency))
     const { data, error } = await supabase
       .from('expenses')
       .update({
-        amount: base,
-        original_amount: original,
-        currency: editCurrency,
+        amount: original,
         date: editDate,
         category_id: editCategoryId || null,
         subcategory: editSubcategory || null,
@@ -315,21 +293,13 @@ export default function Expenses() {
         onSubmit={addExpense}
         className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input
-            inputMode="numeric"
-            value={amount}
-            onChange={(e) => setAmount(formatAmountInput(e.target.value))}
-            placeholder={t('common.amount')}
-            className={inputCls}
-          />
-          <Select value={currency} onChange={setCurrency} options={currencyOptions} />
-        </div>
-        {currency !== BASE_CURRENCY && (
-          <p className="text-xs text-neutral-500">
-            {t('inc.rate', { c: currency, v: formatSum(rateOf(currencies, currency)) })}
-          </p>
-        )}
+        <input
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(formatAmountInput(e.target.value))}
+          placeholder={t('common.amount')}
+          className={inputCls}
+        />
         <DatePicker value={date} onChange={setDate} />
         <Select
           value={categoryId}
@@ -351,11 +321,6 @@ export default function Expenses() {
           placeholder={t('common.descOptional')}
           className={inputCls}
         />
-        {currency !== BASE_CURRENCY && amount && (
-          <p className="text-xs text-neutral-500">
-            {t('inc.convApprox', { v: formatSum(parseAmount(amount) * rateOf(currencies, currency)), by: t('common.byRate') })}
-          </p>
-        )}
         {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
         <button
           type="submit"
@@ -392,16 +357,13 @@ export default function Expenses() {
                 key={i.id}
                 className="flex flex-col gap-3 rounded-xl border border-emerald-500/40 bg-neutral-50 px-4 py-3 dark:bg-neutral-900/40"
               >
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <input
-                    inputMode="numeric"
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(formatAmountInput(e.target.value))}
-                    placeholder={t('common.amount')}
-                    className={inputCls}
-                  />
-                  <Select value={editCurrency} onChange={setEditCurrency} options={currencyOptions} />
-                </div>
+                <input
+                  inputMode="decimal"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(formatAmountInput(e.target.value))}
+                  placeholder={t('common.amount')}
+                  className={inputCls}
+                />
                 <DatePicker value={editDate} onChange={setEditDate} />
                 <Select
                   value={editCategoryId}
@@ -448,9 +410,6 @@ export default function Expenses() {
                   <p className="text-xs text-neutral-500">
                     {catName(i.category_id)}
                     {i.subcategory ? ` · ${tr(i.subcategory)}` : ''} · {formatDateHuman(i.date)}
-                    {i.currency && i.currency !== BASE_CURRENCY && i.original_amount
-                      ? ` · ${formatAmountInput(String(i.original_amount))} ${i.currency}`
-                      : ''}
                     {i.description ? ` · ${i.description}` : ''}
                   </p>
                 </div>

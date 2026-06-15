@@ -81,24 +81,40 @@ export function formatDateHuman(dateStr: string | null | undefined): string {
   return `${d} ${monthGen(m - 1)} ${y}`
 }
 
-// Форматирует число в вид «5 000 000 сум» / «5,000,000 so'm».
+// Форматирует число как сумму в долларах: «$5 000.00» / «$5,000.00».
 export function formatSum(value: number): string {
   const locale = dbLang === 'en' ? 'en-US' : 'ru-RU'
-  const unit = dbLang === 'en' ? " so'm" : ' сум'
-  return new Intl.NumberFormat(locale).format(Math.round(value)) + unit
+  const formatted = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0)
+  return '$' + formatted
 }
 
-// Форматирует ввод суммы с пробелами по тысячам: "1000000" -> "1 000 000".
+// Форматирует ввод суммы с пробелами по тысячам и копейками (до 2 знаков):
+// "1000000" -> "1 000 000", "1234.5" -> "1 234.5".
 export function formatAmountInput(raw: string): string {
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return ''
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  // оставляем только цифры и один разделитель дробной части (точку/запятую -> точку)
+  let s = String(raw).replace(/,/g, '.').replace(/[^\d.]/g, '')
+  if (s === '') return ''
+  const firstDot = s.indexOf('.')
+  if (firstDot !== -1) {
+    // оставляем только первую точку
+    s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, '')
+  }
+  const parts = s.split('.')
+  let intPart = (parts[0] ?? '').replace(/^0+(?=\d)/, '')
+  if (intPart === '') intPart = '0'
+  const intFmt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  if (parts.length < 2) return intFmt
+  return intFmt + '.' + parts[1].slice(0, 2)
 }
 
-// Парсит отформатированную сумму обратно в число.
+// Парсит отформатированную сумму обратно в число (доллары с копейками).
 export function parseAmount(formatted: string): number {
-  const digits = formatted.replace(/\D/g, '')
-  return digits ? Number(digits) : 0
+  const s = String(formatted).replace(/\s/g, '').replace(',', '.').replace(/[^\d.]/g, '')
+  const n = Number(s)
+  return isFinite(n) ? n : 0
 }
 
 // Пресеты подкатегорий расходов по названию категории (можно дополнять своими).
