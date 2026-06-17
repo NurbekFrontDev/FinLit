@@ -917,7 +917,10 @@ export default function Goals() {
           {/* Список желаний */}
           <section className="flex flex-col gap-3">
             <hr className="border-neutral-200 dark:border-neutral-800" />
-            <h2 className={sectionTitle}>{t('goals.wantBuy')}</h2>
+            <h2 className={sectionTitle}>
+              {t('goals.wantBuy')}
+              <span className="ml-2 text-sm font-normal text-neutral-500">{t('goals.wantBuyHint')}</span>
+            </h2>
             {wishes.length === 0 ? (
               <p className="text-sm text-neutral-500">{t('goals.emptyList')}</p>
             ) : (
