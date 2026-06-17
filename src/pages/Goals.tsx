@@ -17,6 +17,7 @@ import {
   renamePreset,
   deletePreset,
   WISH_CATEGORIES,
+  WISH_SUBCATEGORY_PRESETS,
   loadGoalsSplit,
   saveGoalsSplit,
   DEFAULT_GOALS_SPLIT,
@@ -32,6 +33,7 @@ type Goal = {
   is_primary: boolean
   done: boolean
   category: string | null
+  subcategory: string | null
   expense_id: string | null
   created_at: string
 }
@@ -39,7 +41,7 @@ type Contribution = { id: string; goal_id: string; amount: number; date: string 
 type Category = { id: string; name: string; percent?: number; archived?: boolean }
 
 const GOAL_COLS =
-  'id, name, note, target_amount, target_date, is_goal, is_primary, done, category, expense_id, created_at'
+  'id, name, note, target_amount, target_date, is_goal, is_primary, done, category, subcategory, expense_id, created_at'
 
 // Базовый стиль поля без ширины (чтобы не конфликтовало с flex-1 в строках).
 const fieldBase =
@@ -102,7 +104,12 @@ export default function Goals() {
   const [price, setPrice] = useState('')
   const [note, setNote] = useState('')
   const [wishCategory, setWishCategory] = useState<string>('Цели и хотелки')
+  const [wishSub, setWishSub] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Фильтры списка «Хочу купить»: по категории важности и по подкатегории.
+  const [filterCat, setFilterCat] = useState<string>('all')
+  const [filterSub, setFilterSub] = useState<string>('all')
 
   // Мульти-сортировка: «по важности» можно совмещать с направлением по дате.
   const [byPriority, setByPriority] = useState(true)
@@ -211,6 +218,50 @@ export default function Goals() {
     if (buySub === v) setBuySub('')
   }
 
+  // Подсказки подкатегорий для списка желаний (по категории важности),
+  // с учётом локальных правок и уже использованных значений.
+  const wishSubOptions = (category: string): string[] => {
+    const presets = effectivePresets('wishsub:' + category, WISH_SUBCATEGORY_PRESETS[category] ?? [])
+    const used = goals
+      .filter((g) => g.category === category)
+      .map((g) => g.subcategory)
+      .filter((s): s is string => !!s)
+    return Array.from(new Set([...used, ...presets]))
+  }
+
+  // Переименовать подкатегорию желаний: меняем подсказку и все записи этой категории.
+  const renameWishSub = async (category: string, oldV: string, newV: string) => {
+    const v = newV.trim()
+    if (!user || !v || v === oldV) return
+    renamePreset('wishsub:' + category, WISH_SUBCATEGORY_PRESETS[category] ?? [], oldV, v)
+    await supabase
+      .from('goals')
+      .update({ subcategory: v })
+      .eq('user_id', user.id)
+      .eq('category', category)
+      .eq('subcategory', oldV)
+    setGoals((prev) =>
+      prev.map((g) => (g.category === category && g.subcategory === oldV ? { ...g, subcategory: v } : g)),
+    )
+    if (wishSub === oldV) setWishSub(v)
+  }
+
+  // Удалить подкатегорию желаний: убираем подсказку и очищаем её у записей.
+  const deleteWishSub = async (category: string, v: string) => {
+    if (!user) return
+    deletePreset('wishsub:' + category, WISH_SUBCATEGORY_PRESETS[category] ?? [], v)
+    await supabase
+      .from('goals')
+      .update({ subcategory: null })
+      .eq('user_id', user.id)
+      .eq('category', category)
+      .eq('subcategory', v)
+    setGoals((prev) =>
+      prev.map((g) => (g.category === category && g.subcategory === v ? { ...g, subcategory: null } : g)),
+    )
+    if (wishSub === v) setWishSub('')
+  }
+
   const savedFor = (goalId: string) =>
     contribs.filter((c) => c.goal_id === goalId).reduce((s, c) => s + Number(c.amount), 0)
 
@@ -227,6 +278,7 @@ export default function Goals() {
         note: note.trim() || null,
         target_amount: parseAmount(price),
         category: wishCategory,
+        subcategory: wishSub.trim() || null,
         is_goal: false,
         is_primary: false,
         done: false,
@@ -242,6 +294,7 @@ export default function Goals() {
     setName('')
     setPrice('')
     setNote('')
+    setWishSub('')
   }
 
   const openGoalForm = (g: Goal) => {
@@ -504,6 +557,22 @@ export default function Goals() {
     return dateDir === 'new' ? -cmp : cmp
   })
 
+  // Категории и подкатегории, реально присутствующие в списке желаний (для фильтров).
+  const wishFilterCats = WISH_CATEGORIES.filter((c) => wishes.some((g) => g.category === c))
+  const wishFilterSubs = Array.from(
+    new Set(
+      wishes
+        .filter((g) => filterCat === 'all' || g.category === filterCat)
+        .map((g) => g.subcategory)
+        .filter((s): s is string => !!s),
+    ),
+  )
+  const visibleWishes = sortedWishes.filter((g) => {
+    if (filterCat !== 'all' && g.category !== filterCat) return false
+    if (filterSub !== 'all' && g.subcategory !== filterSub) return false
+    return true
+  })
+
   const buyTotal = parseAmount(buyAmount)
 
   // Форма записи покупки в расходы (общая для желаний и целей).
@@ -749,7 +818,22 @@ export default function Goals() {
           placeholder={t('goals.priceApprox')}
           className={inputCls}
         />
-        <Select value={wishCategory} onChange={setWishCategory} options={wishCategoryOptions} />
+        <Select
+          value={wishCategory}
+          onChange={(v) => {
+            setWishCategory(v)
+            setWishSub('')
+          }}
+          options={wishCategoryOptions}
+        />
+        <Combobox
+          value={wishSub}
+          onChange={setWishSub}
+          options={wishSubOptions(wishCategory)}
+          placeholder={t('goals.subOptional')}
+          onRenameOption={(o, n) => renameWishSub(wishCategory, o, n)}
+          onDeleteOption={(o) => deleteWishSub(wishCategory, o)}
+        />
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -851,7 +935,58 @@ export default function Goals() {
                     {t('common.sortOld')}
                   </button>
                 </div>
-                {sortedWishes.map((g) => (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-neutral-500">{t('goals.filterCat')}:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterCat('all')
+                      setFilterSub('all')
+                    }}
+                    className={chipCls(filterCat === 'all')}
+                  >
+                    {t('common.all')}
+                  </button>
+                  {wishFilterCats.map((c) => (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => {
+                        setFilterCat(c)
+                        setFilterSub('all')
+                      }}
+                      className={chipCls(filterCat === c)}
+                    >
+                      {tr(c)}
+                    </button>
+                  ))}
+                </div>
+                {wishFilterSubs.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-neutral-500">{t('goals.filterSub')}:</span>
+                    <button
+                      type="button"
+                      onClick={() => setFilterSub('all')}
+                      className={chipCls(filterSub === 'all')}
+                    >
+                      {t('common.all')}
+                    </button>
+                    {wishFilterSubs.map((s) => (
+                      <button
+                        type="button"
+                        key={s}
+                        onClick={() => setFilterSub(s)}
+                        className={chipCls(filterSub === s)}
+                      >
+                        {tr(s)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {visibleWishes.length === 0 && (
+                  <p className="text-sm text-neutral-500">{t('goals.nothingFound')}</p>
+                )}
+                {visibleWishes.map((g) => (
                   <div
                     key={g.id}
                     className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
@@ -862,6 +997,11 @@ export default function Goals() {
                         {g.category && (
                           <span className={`rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
                             {tr(g.category)}
+                          </span>
+                        )}
+                        {g.subcategory && (
+                          <span className="rounded-full bg-neutral-500/15 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                            {tr(g.subcategory)}
                           </span>
                         )}
                       </div>
