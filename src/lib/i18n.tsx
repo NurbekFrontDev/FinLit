@@ -37,6 +37,8 @@ const UI: Record<Lang, Record<string, string>> = {
     'common.edit': 'Изменить',
     'common.add': 'Добавить',
     'common.confirm': 'Подтвердить',
+    'common.reorder': '↕️ Переместить',
+    'common.reorderDone': '✓ Готово',
     'common.amount': 'Сумма',
     'common.category': 'Категория',
     'common.descOptional': 'Описание (необязательно)',
@@ -218,6 +220,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'debts.paidOff': 'Выплачен полностью ✅',
     'debts.paidSection': '✅ Оплаченные долги',
     'debts.undo': '↩️ Вернуть',
+    'debts.dragHint': 'Перетащи, чтобы изменить порядок',
 
     'hist.title': 'История',
     'hist.empty': 'Пока нет данных. Добавь доходы и расходы — месяцы появятся здесь.',
@@ -300,6 +303,8 @@ const UI: Record<Lang, Record<string, string>> = {
     'common.edit': 'Edit',
     'common.add': 'Add',
     'common.confirm': 'Confirm',
+    'common.reorder': '↕️ Reorder',
+    'common.reorderDone': '✓ Done',
     'common.amount': 'Amount',
     'common.category': 'Category',
     'common.descOptional': 'Description (optional)',
@@ -481,6 +486,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'debts.paidOff': 'Fully repaid ✅',
     'debts.paidSection': '✅ Paid off',
     'debts.undo': '↩️ Undo',
+    'debts.dragHint': 'Drag to reorder',
 
     'hist.title': 'History',
     'hist.empty': 'No data yet. Add income and expenses — months will appear here.',

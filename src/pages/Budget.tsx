@@ -98,6 +98,9 @@ export default function Budget() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // Режим перемещения: перетаскивать категории можно только когда он включён.
+  // На телефоне это защищает от случайного перетаскивания во время прокрутки.
+  const [reorder, setReorder] = useState(false)
 
   // Перетаскивание категорий через те же точки слева.
   //  · active=false пока палец не сдвинулся больше порога — такой «down» считается тапом и открывает меню.
@@ -477,15 +480,28 @@ export default function Budget() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-neutral-500 dark:text-neutral-400">{t('budget.catsPercents')}</span>
-              <span
-                className={`text-sm ${
-                  totalPercent === 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
-                }`}
-              >
-                {t('budget.total', { p: totalPercent })}
-              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReorder((v) => !v)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    reorder
+                      ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                      : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  {reorder ? t('common.reorderDone') : t('common.reorder')}
+                </button>
+                <span
+                  className={`text-sm ${
+                    totalPercent === 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  {t('budget.total', { p: totalPercent })}
+                </span>
+              </div>
             </div>
 
             {categories.map((c, index) =>
@@ -538,7 +554,7 @@ export default function Budget() {
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    {grip(c, index)}
+                    {reorder && grip(c, index)}
                     <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{tr(c.name)}</span>
                     {percentField(c)}
                     <span className="min-w-[5rem] shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">

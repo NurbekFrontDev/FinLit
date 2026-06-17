@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import DatePicker from '../components/DatePicker'
@@ -19,6 +19,7 @@ type Debt = {
   note: string | null
   archived: boolean
   created_at: string
+  sort_order: number
 }
 type Payment = {
   id: string
@@ -29,7 +30,7 @@ type Payment = {
 }
 type Category = { id: string; name: string; archived?: boolean }
 
-const DEBT_COLS = 'id, person, amount, note, archived, created_at'
+const DEBT_COLS = 'id, person, amount, note, archived, created_at, sort_order'
 const PAYMENT_COLS = 'id, debt_id, amount, date, expense_id'
 
 const fieldBase =
@@ -72,6 +73,35 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
   const [clearOpen, setClearOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
+  // Режим перемещения: перетаскивать долги можно только когда он включён.
+  // На телефоне это защищает от случайного перетаскивания во время прокрутки.
+  const [reorder, setReorder] = useState(false)
+
+  // Перетаскивание долгов (тот же механизм, что в «Бюджете»).
+  //  · active=false пока палец не сдвинулся больше порога.
+  //  · active=true — настоящее перетаскивание: соседи плавно расступаются.
+  //  · settling=true — карточка плавно «доезжает» в слот при отпускании.
+  type DragState = {
+    id: string
+    fromIndex: number
+    overIndex: number
+    startY: number
+    offset: number
+    slot: number
+    active: boolean
+    settling: boolean
+  }
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const dragRef = useRef<DragState | null>(null)
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const settleTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (!user) return
     let active = true
@@ -83,7 +113,7 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
             .from('debts')
             .select(DEBT_COLS)
             .eq('user_id', user.id)
-            .order('created_at', { ascending: false }),
+            .order('sort_order', { ascending: true }),
           supabase.from('debt_payments').select(PAYMENT_COLS).eq('user_id', user.id),
           supabase
             .from('categories')
@@ -125,8 +155,10 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
   const active = debts.filter((d) => !d.archived)
   const cleared = debts.filter((d) => d.archived)
   // Активные делим: ещё не выплаченные сверху, полностью выплаченные — вниз.
-  const unpaid = active.filter((d) => !isDebtDone(d))
-  const paidOff = active.filter((d) => isDebtDone(d))
+  // Внутри групп — по ручному порядку (sort_order), чтобы важные были выше.
+  const bySort = (a: Debt, b: Debt) => a.sort_order - b.sort_order
+  const unpaid = active.filter((d) => !isDebtDone(d)).sort(bySort)
+  const paidOff = active.filter((d) => isDebtDone(d)).sort(bySort)
   const totalLeft = active.reduce(
     (s, d) => s + Math.max(0, Number(d.amount) - paidFor(d.id)),
     0,
@@ -146,6 +178,8 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
     }
     setBusy(true)
     setError(null)
+    // Новый долг кладём наверх списка (самый маленький sort_order).
+    const minOrder = debts.reduce((m, d) => Math.min(m, d.sort_order), 0)
     const { data, error } = await supabase
       .from('debts')
       .insert({
@@ -154,6 +188,7 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
         amount: value,
         note: note.trim() || null,
         archived: false,
+        sort_order: minOrder - 1,
       })
       .select(DEBT_COLS)
       .single()
@@ -330,6 +365,134 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
     setDebts(debts.filter((d) => d.id !== id))
     setPayments(payments.filter((p) => p.debt_id !== id))
   }
+
+  // Сохраняет новый порядок долгов в БД.
+  const persistOrder = async (reordered: Debt[]) => {
+    const results = await Promise.all(
+      reordered.map((d) =>
+        supabase.from('debts').update({ sort_order: d.sort_order }).eq('id', d.id),
+      ),
+    )
+    const failed = results.find((r) => r.error)
+    if (failed?.error) setError(failed.error.message)
+  }
+
+  // Нажатие на ручку: запоминаем старт. Пока палец не сдвинулся — это ещё не перетаскивание.
+  const startDrag = (e: React.PointerEvent, id: string, index: number) => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const el = rowRefs.current.get(id)
+    const slot = (el?.offsetHeight ?? 64) + 8
+    const next: DragState = {
+      id,
+      fromIndex: index,
+      overIndex: index,
+      startY: e.clientY,
+      offset: 0,
+      slot,
+      active: false,
+      settling: false,
+    }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  // Движение: после порога (6px) — настоящий драг; карточка следует за пальцем.
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d || d.settling) return
+    const offset = e.clientY - d.startY
+    const isActive = d.active || Math.abs(offset) > 6
+    const steps = Math.round(offset / d.slot)
+    const overIndex = Math.max(0, Math.min(unpaid.length - 1, d.fromIndex + steps))
+    if (offset === d.offset && overIndex === d.overIndex && isActive === d.active) return
+    const next: DragState = { ...d, offset, overIndex, active: isActive }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  // Отпускание: если не было движения — ничего не делаем. Иначе плавно доводим
+  // карточку в слот, потом фиксируем порядок.
+  const endDrag = (e?: React.PointerEvent) => {
+    if (e) {
+      try {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch {
+        // уже отпущен
+      }
+    }
+    const d = dragRef.current
+    if (!d) return
+    if (!d.active) {
+      dragRef.current = null
+      setDrag(null)
+      return
+    }
+    const slot = d.slot
+    const targetOffset = (d.overIndex - d.fromIndex) * slot
+    const settling: DragState = { ...d, settling: true, offset: targetOffset }
+    dragRef.current = settling
+    setDrag(settling)
+
+    const order = unpaid
+    if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    settleTimer.current = window.setTimeout(() => {
+      settleTimer.current = null
+      if (d.overIndex !== d.fromIndex) {
+        const next = order.slice()
+        const [moved] = next.splice(d.fromIndex, 1)
+        next.splice(d.overIndex, 0, moved)
+        const reordered = next.map((dd, i) => ({ ...dd, sort_order: i + 1 }))
+        setDebts((prev) =>
+          prev.map((dd) => {
+            const found = reordered.find((r) => r.id === dd.id)
+            return found ? { ...dd, sort_order: found.sort_order } : dd
+          }),
+        )
+        void persistOrder(reordered)
+      }
+      dragRef.current = null
+      setDrag(null)
+    }, 210)
+  }
+
+  // Стиль карточки во время перетаскивания.
+  const dragStyle = (id: string, index: number): React.CSSProperties | undefined => {
+    if (!drag || !drag.active) return undefined
+    if (id === drag.id) {
+      return {
+        transform: `translateY(${drag.offset}px) scale(${drag.settling ? 1 : 1.03})`,
+        transition: drag.settling ? 'transform 200ms cubic-bezier(0.2, 0, 0, 1)' : 'none',
+        position: 'relative',
+        zIndex: 30,
+      }
+    }
+    let shift = 0
+    if (drag.overIndex > drag.fromIndex && index > drag.fromIndex && index <= drag.overIndex)
+      shift = -drag.slot
+    else if (drag.overIndex < drag.fromIndex && index >= drag.overIndex && index < drag.fromIndex)
+      shift = drag.slot
+    return {
+      transform: `translateY(${shift}px)`,
+      transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
+    }
+  }
+
+  // Ручка слева — только перетаскивание (в режиме перемещения).
+  const grip = (id: string, index: number) => (
+    <button
+      type="button"
+      aria-label={t('debts.dragHint')}
+      title={t('debts.dragHint')}
+      onPointerDown={(e) => startDrag(e, id, index)}
+      onPointerMove={moveDrag}
+      onPointerUp={(e) => endDrag(e)}
+      onPointerCancel={(e) => endDrag(e)}
+      className="shrink-0 cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
+    >
+      ⠿
+    </button>
+  )
 
   const renderDebt = (d: Debt) => {
     const paid = paidFor(d.id)
@@ -548,9 +711,51 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
             <p className="text-sm text-neutral-500">{t('debts.empty')}</p>
           ) : (
             <>
-              {unpaid.length > 0 && (
-                <section className="flex flex-col gap-3">{unpaid.map(renderDebt)}</section>
+              {unpaid.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setReorder((v) => !v)}
+                  className={`self-start rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    reorder
+                      ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                      : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  {reorder ? t('common.reorderDone') : t('common.reorder')}
+                </button>
               )}
+
+              {unpaid.length > 0 &&
+                (reorder ? (
+                  <section className="flex flex-col gap-2">
+                    {unpaid.map((d, index) => (
+                      <div
+                        key={d.id}
+                        ref={(el) => {
+                          if (el) rowRefs.current.set(d.id, el)
+                          else rowRefs.current.delete(d.id)
+                        }}
+                        style={dragStyle(d.id, index)}
+                        className={`relative flex items-center gap-2 rounded-xl border bg-neutral-50 px-3 py-3 dark:bg-neutral-900/40 ${
+                          drag?.id === d.id && drag.active
+                            ? 'border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
+                            : 'border-neutral-200 dark:border-neutral-800'
+                        }`}
+                      >
+                        {grip(d.id, index)}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{d.person}</p>
+                          {d.note && <p className="truncate text-xs text-neutral-500">{d.note}</p>}
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                          {formatSum(Math.max(0, Number(d.amount) - paidFor(d.id)))}
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                ) : (
+                  <section className="flex flex-col gap-3">{unpaid.map(renderDebt)}</section>
+                ))}
 
               {paidOff.length > 0 && (
                 <section className="flex flex-col gap-3">
