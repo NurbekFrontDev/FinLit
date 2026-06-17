@@ -8,10 +8,12 @@ import {
   formatSum,
   formatAmountInput,
   parseAmount,
-  monthsUntil,
   formatDateHuman,
   getOrCreateMonth,
   isCharityCategory,
+  isCharityBigSubcategory,
+  CHARITY_BIG_SUBCATEGORY,
+  CHARITY_SMALL_SUBCATEGORY,
   loadCharityPots,
   loadCharitySplit,
   saveCharitySplit,
@@ -22,15 +24,25 @@ import {
 } from '../lib/db'
 
 type Category = { id: string; name: string; percent?: number; archived?: boolean }
+type CharityExpense = {
+  id: string
+  amount: number
+  date: string
+  description: string | null
+  subcategory: string | null
+  paid_from_pot: string | null
+}
 
 const fieldBase =
   'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-500 dark:border-neutral-700 dark:bg-neutral-950'
 const inputCls = 'w-full ' + fieldBase
 const btnPrimary =
-  'rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-rose-400'
+  'rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-rose-400 disabled:opacity-60'
 const btnGhost =
   'rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
 const sectionTitle = 'text-xl font-semibold'
+
+const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export default function Charity() {
   const { user } = useAuth()
@@ -40,18 +52,28 @@ export default function Charity() {
   const [categories, setCategories] = useState<Category[]>([])
   const [received, setReceived] = useState(0)
   const [pots, setPots] = useState<CharityPotsStats>({ big: 0, small: 0, total: 0 })
+  const [items, setItems] = useState<CharityExpense[]>([])
   const [split, setSplit] = useState(DEFAULT_CHARITY_SPLIT)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   const [goalName, setGoalName] = useState('')
   const [goalTarget, setGoalTarget] = useState(0)
-  const [goalDate, setGoalDate] = useState<string | null>(null)
 
   const [editGoal, setEditGoal] = useState(false)
   const [formName, setFormName] = useState('')
   const [formTarget, setFormTarget] = useState('')
-  const [formDate, setFormDate] = useState('')
+
+  // Пополнение крупной цели.
+  const [bigOpen, setBigOpen] = useState(false)
+  const [bigAmount, setBigAmount] = useState('')
+  const [bigDate, setBigDate] = useState(todayISO())
+
+  // Маленькое пожертвование (список «Кому / Сколько»).
+  const [smallTo, setSmallTo] = useState('')
+  const [smallAmount, setSmallAmount] = useState('')
+  const [smallDate, setSmallDate] = useState(todayISO())
 
   useEffect(() => {
     if (!user) return
@@ -75,7 +97,8 @@ export default function Charity() {
         if (!active) return
         if (catRes.error) throw catRes.error
         if (incRes.error) throw incRes.error
-        setCategories((catRes.data ?? []) as Category[])
+        const cats = (catRes.data ?? []) as Category[]
+        setCategories(cats)
         setReceived(
           (incRes.data ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0),
         )
@@ -83,7 +106,18 @@ export default function Charity() {
         setSplit(splitVal)
         setGoalName(goalVal.name)
         setGoalTarget(goalVal.target)
-        setGoalDate(goalVal.date)
+
+        // Записи копилки благотворительности (пополнения и пожертвования).
+        const charityIds = cats.filter((c) => isCharityCategory(c.name)).map((c) => c.id)
+        if (charityIds.length > 0) {
+          const { data: exps } = await supabase
+            .from('expenses')
+            .select('id, amount, date, description, subcategory, paid_from_pot')
+            .eq('user_id', user.id)
+            .in('category_id', charityIds)
+            .order('date', { ascending: false })
+          if (active) setItems((exps ?? []) as CharityExpense[])
+        }
       } catch (e) {
         if (active) setError((e as Error).message)
       } finally {
@@ -108,13 +142,14 @@ export default function Charity() {
 
   const pct = goalTarget > 0 ? Math.min(100, (pots.big / goalTarget) * 100) : 0
   const remaining = Math.max(0, goalTarget - pots.big)
-  const months = monthsUntil(goalDate)
-  const perMonth = months > 0 ? remaining / months : 0
+
+  // Списки: пополнения крупной цели и маленькие пожертвования (только пополнения копилки).
+  const bigTopUps = items.filter((i) => !i.paid_from_pot && isCharityBigSubcategory(i.subcategory))
+  const smallDonations = items.filter((i) => !i.paid_from_pot && !isCharityBigSubcategory(i.subcategory))
 
   const openGoalForm = () => {
     setFormName(goalName)
     setFormTarget(goalTarget > 0 ? formatAmountInput(String(goalTarget)) : '')
-    setFormDate(goalDate ?? '')
     setEditGoal(true)
     setError(null)
   }
@@ -123,19 +158,126 @@ export default function Charity() {
     e.preventDefault()
     if (!user) return
     const target = parseAmount(formTarget)
-    const goal = { name: formName.trim(), target, date: formDate || null }
+    const goal = { name: formName.trim(), target, date: null }
     try {
       await saveCharityGoal(user.id, goal)
       setGoalName(goal.name)
       setGoalTarget(goal.target)
-      setGoalDate(goal.date)
       setEditGoal(false)
     } catch (err) {
       setError((err as Error).message)
     }
   }
 
+  // Общая запись пополнения копилки благотворительности в «Расходы»
+  // (категория «Благотворительность», без paid_from_pot -- значит копилка растёт).
+  const addContribution = async (
+    sub: string,
+    amount: number,
+    date: string,
+    to: string | null,
+  ): Promise<CharityExpense> => {
+    if (!user || !charityCat) throw new Error(t('charity.noCat'))
+    const d = new Date(date + 'T00:00:00')
+    const m = await getOrCreateMonth(user.id, d.getFullYear(), d.getMonth() + 1)
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({
+        user_id: user.id,
+        month_id: m.id,
+        category_id: charityCat.id,
+        subcategory: sub,
+        amount,
+        date,
+        description: to,
+        paid_from_pot: null,
+      })
+      .select('id, amount, date, description, subcategory, paid_from_pot')
+      .single()
+    if (error || !data) throw error ?? new Error(t('common.saveFailed'))
+    return data as CharityExpense
+  }
+
+  const submitBig = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const amount = parseAmount(bigAmount)
+    if (!amount || amount <= 0) {
+      setError(t('common.enterPositive'))
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const row = await addContribution(CHARITY_BIG_SUBCATEGORY, amount, bigDate, null)
+      setItems((prev) => [row, ...prev])
+      setPots((p) => ({ ...p, big: p.big + amount, total: p.total + amount }))
+      setBigAmount('')
+      setBigDate(todayISO())
+      setBigOpen(false)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitSmall = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    const amount = parseAmount(smallAmount)
+    if (!amount || amount <= 0) {
+      setError(t('common.enterPositive'))
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const row = await addContribution(
+        CHARITY_SMALL_SUBCATEGORY,
+        amount,
+        smallDate,
+        smallTo.trim() || null,
+      )
+      setItems((prev) => [row, ...prev])
+      setPots((p) => ({ ...p, small: p.small + amount, total: p.total + amount }))
+      setSmallTo('')
+      setSmallAmount('')
+      setSmallDate(todayISO())
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeItem = async (id: string) => {
+    const ex = items.find((i) => i.id === id)
+    if (!ex) return
+    const { error } = await supabase.from('expenses').delete().eq('id', id)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setItems((prev) => prev.filter((i) => i.id !== id))
+    if (!ex.paid_from_pot) {
+      const a = Number(ex.amount) || 0
+      if (isCharityBigSubcategory(ex.subcategory)) {
+        setPots((p) => ({ ...p, big: p.big - a, total: p.total - a }))
+      } else {
+        setPots((p) => ({ ...p, small: p.small - a, total: p.total - a }))
+      }
+    }
+  }
+
   const hasGoal = goalTarget > 0 || goalName.trim().length > 0
+
+  const openBigForm = () => {
+    setBigOpen(true)
+    setBigAmount('')
+    setBigDate(todayISO())
+    setError(null)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -143,7 +285,7 @@ export default function Charity() {
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="self-start text-sm text-neutral-500 transition hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+          className="-ml-2 self-start rounded-lg px-2 py-1 text-base font-medium text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
           {t('charity.back')}
         </button>
@@ -152,7 +294,7 @@ export default function Charity() {
 
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
-      ) : error ? (
+      ) : error && items.length === 0 && !charityCat ? (
         <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
       ) : (
         <>
@@ -171,6 +313,8 @@ export default function Charity() {
               </p>
             </div>
           </div>
+
+          {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
 
           {/* Распределение 5% (как 80/20 в «Целях») */}
           <section className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
@@ -211,8 +355,9 @@ export default function Charity() {
             </div>
           </section>
 
-          {/* Крупное пожертвование (цель с прогрессом) */}
+          {/* Крупное пожертвование (цель с прогрессом + пополнение) */}
           <section className="flex flex-col gap-3">
+            <hr className="border-neutral-200 dark:border-neutral-800" />
             <h2 className={sectionTitle}>{t('charity.bigTitle')}</h2>
             <div className="flex flex-col gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/5 p-4 dark:bg-rose-500/10">
               {editGoal ? (
@@ -230,8 +375,6 @@ export default function Charity() {
                     placeholder={t('charity.goalAmount')}
                     className={inputCls}
                   />
-                  <DatePicker value={formDate} onChange={setFormDate} />
-                  {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
                   <div className="flex gap-2">
                     <button type="submit" className={btnPrimary}>
                       {t('charity.saveGoal')}
@@ -241,69 +384,170 @@ export default function Charity() {
                     </button>
                   </div>
                 </form>
-              ) : hasGoal ? (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      {goalName && <p className="font-medium">{goalName}</p>}
-                      {goalDate && (
-                        <p className="text-xs text-neutral-500">{t('charity.by', { d: formatDateHuman(goalDate) })}</p>
-                      )}
-                    </div>
-                    <span className="shrink-0 text-sm font-semibold text-rose-600 dark:text-rose-400">
-                      {Math.round(pct)}%
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-                    <div className="h-full rounded-full bg-rose-500" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <p className="text-neutral-500">{t('charity.collected')}</p>
-                      <p className="font-medium text-rose-600 dark:text-rose-400">{formatSum(pots.big)}</p>
-                    </div>
-                    <div>
-                      <p className="text-neutral-500">{t('charity.left')}</p>
-                      <p className="font-medium">{formatSum(remaining)}</p>
-                    </div>
-                    <div>
-                      <p className="text-neutral-500">{t('charity.perMonth')}</p>
-                      <p className="font-medium">{months > 0 ? formatSum(perMonth) : '—'}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-neutral-500">{t('charity.target', { v: formatSum(goalTarget) })}</p>
-                  {bigBudget > 0 && (
-                    <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
-                      {t('charity.monthToBig', { v: formatSum(bigBudget) })}
-                    </p>
-                  )}
-                  <button type="button" onClick={openGoalForm} className={btnGhost + ' self-start'}>
-                    {t('charity.editGoal')}
-                  </button>
-                </>
               ) : (
                 <>
-                  <p className="text-sm text-neutral-500">{t('charity.noGoal')}</p>
-                  <p className="text-xs text-neutral-500">{t('charity.inPot', { v: formatSum(pots.big) })}</p>
-                  <button type="button" onClick={openGoalForm} className={btnPrimary + ' self-start'}>
-                    {t('charity.setGoal')}
-                  </button>
+                  {hasGoal ? (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          {goalName && <p className="font-medium">{goalName}</p>}
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-rose-600 dark:text-rose-400">
+                          {Math.round(pct)}%
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                        <div className="h-full rounded-full bg-rose-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-neutral-500">{t('charity.collected')}</p>
+                          <p className="font-medium text-rose-600 dark:text-rose-400">{formatSum(pots.big)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-neutral-500">{t('charity.left')}</p>
+                          <p className="font-medium">{formatSum(remaining)}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-neutral-500">{t('charity.target', { v: formatSum(goalTarget) })}</p>
+                      {bigBudget > 0 && (
+                        <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                          {t('charity.monthToBig', { v: formatSum(bigBudget) })}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-neutral-500">{t('charity.noGoal')}</p>
+                      <p className="text-xs text-neutral-500">{t('charity.inPot', { v: formatSum(pots.big) })}</p>
+                    </>
+                  )}
+
+                  {bigOpen ? (
+                    <form onSubmit={submitBig} className="flex flex-col gap-2">
+                      <input
+                        inputMode="decimal"
+                        value={bigAmount}
+                        onChange={(e) => setBigAmount(formatAmountInput(e.target.value))}
+                        placeholder={t('charity.topUpAmount')}
+                        className={inputCls}
+                      />
+                      <DatePicker value={bigDate} onChange={setBigDate} />
+                      <div className="flex gap-2">
+                        <button type="submit" disabled={busy} className={btnPrimary}>
+                          {busy ? t('common.saving') : t('charity.topUp')}
+                        </button>
+                        <button type="button" onClick={() => setBigOpen(false)} className={btnGhost}>
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {charityCat && (
+                        <button type="button" onClick={openBigForm} className={btnPrimary}>
+                          {t('charity.topUp')}
+                        </button>
+                      )}
+                      <button type="button" onClick={openGoalForm} className={btnGhost}>
+                        {hasGoal ? t('charity.editGoal') : t('charity.setGoal')}
+                      </button>
+                    </div>
+                  )}
+
+                  {bigTopUps.length > 0 && (
+                    <details className="text-sm text-neutral-500">
+                      <summary className="cursor-pointer">{t('charity.topUps', { n: bigTopUps.length })}</summary>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {bigTopUps.map((c) => (
+                          <div
+                            key={c.id}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-neutral-100 px-3 py-2.5 text-sm dark:bg-neutral-800/50"
+                          >
+                            <span className="text-neutral-700 dark:text-neutral-300">
+                              {formatDateHuman(c.date)} · {formatSum(Number(c.amount))}
+                            </span>
+                            <button
+                              onClick={() => removeItem(c.id)}
+                              className="shrink-0 text-red-500 transition hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                            >
+                              {t('common.delete')}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </>
               )}
             </div>
           </section>
 
-          {/* Маленькие пожертвования */}
+          {/* Маленькие пожертвования (список «Кому / Сколько») */}
           <section className="flex flex-col gap-3">
             <hr className="border-neutral-200 dark:border-neutral-800" />
             <h2 className={sectionTitle}>{t('charity.smallTitle')}</h2>
-            <div className="flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
+            <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
               <p className="text-2xl font-semibold text-rose-600 dark:text-rose-400">{formatSum(pots.small)}</p>
               {smallBudget > 0 && (
                 <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
                   {t('charity.monthToSmall', { v: formatSum(smallBudget) })}
                 </p>
               )}
+
+              {charityCat ? (
+                <form onSubmit={submitSmall} className="flex flex-col gap-2">
+                  <input
+                    value={smallTo}
+                    onChange={(e) => setSmallTo(e.target.value)}
+                    placeholder={t('charity.smallTo')}
+                    className={inputCls}
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      inputMode="decimal"
+                      value={smallAmount}
+                      onChange={(e) => setSmallAmount(formatAmountInput(e.target.value))}
+                      placeholder={t('charity.smallAmount')}
+                      className={'flex-1 ' + fieldBase}
+                    />
+                    <div className="flex-1">
+                      <DatePicker value={smallDate} onChange={setSmallDate} />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={busy} className={btnPrimary + ' self-start'}>
+                    {busy ? t('common.saving') : t('charity.addSmall')}
+                  </button>
+                </form>
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">{t('charity.noCat')}</p>
+              )}
+
+              {smallDonations.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {smallDonations.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-neutral-100 px-3 py-2.5 text-sm dark:bg-neutral-800/50"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-rose-600 dark:text-rose-400">{formatSum(Number(c.amount))}</p>
+                        <p className="text-xs text-neutral-500">
+                          {c.description ? `${c.description} · ` : ''}
+                          {formatDateHuman(c.date)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeItem(c.id)}
+                        className="shrink-0 text-red-500 transition hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                      >
+                        {t('common.delete')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <p className="text-xs text-neutral-500">{t('charity.smallHint')}</p>
             </div>
           </section>

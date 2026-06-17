@@ -195,10 +195,12 @@ export default function Dashboard() {
             </p>
           )}
 
+          <hr className="border-neutral-200 dark:border-neutral-800" />
+
           <div className="grid grid-cols-2 gap-3 items-stretch">
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 dark:border-emerald-500/20">
-              <p className="text-sm font-medium">{t('cushion.title')}</p>
-              <p className="mt-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              <p className="text-xs font-medium">{t('cushion.title')}</p>
+              <p className="mt-1 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
                 {formatSum(pots.cushion)}
               </p>
               <div className="mt-2 flex gap-1">
@@ -238,8 +240,8 @@ export default function Dashboard() {
 
             <div className="flex h-full flex-col gap-3">
               <div className="flex flex-1 flex-col justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 dark:border-emerald-500/20">
-                <p className="text-sm font-medium">{t('savings.freeTitle')}</p>
-                <p className="mt-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                <p className="text-xs font-medium">{t('savings.freeTitle')}</p>
+                <p className="mt-1 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
                   {formatSum(pots.free)}
                 </p>
               </div>
@@ -249,14 +251,13 @@ export default function Dashboard() {
                 onClick={() => navigate('/charity')}
                 className="flex flex-1 flex-col justify-center rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-left transition hover:bg-rose-500/10 dark:border-rose-500/20"
               >
-                <p className="flex items-center justify-between text-sm font-medium">
-                  {t('charity.title')}
+                <p className="flex flex-wrap items-center gap-x-1 text-xs font-medium leading-tight">
+                  <span>{t('charity.title')}</span>
                   <span className="text-rose-500" aria-hidden>›</span>
                 </p>
-                <p className="mt-1 text-2xl font-semibold text-rose-600 dark:text-rose-400">
+                <p className="mt-1 text-xl font-semibold text-rose-600 dark:text-rose-400">
                   {formatSum(pots.charity)}
                 </p>
-                <span className="mt-1 text-xs text-rose-600/70 dark:text-rose-400/70">{t('charity.openHint')}</span>
               </button>
             </div>
           </div>
