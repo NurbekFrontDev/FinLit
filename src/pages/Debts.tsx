@@ -307,9 +307,21 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
     setDebts(debts.map((d) => (d.id === id ? (data as Debt) : d)))
   }
 
-  // Удалить долг полностью. Платежи уходят (каскад в БД), но расходы остаются в истории.
+  // Удалить долг полностью вместе с его расходами в Истории: сначала удаляем расходы,
+  // привязанные к платежам этого долга, потом сам долг (платежи уйдут каскадом в БД).
+  // Так после удаления долга в Истории не остаётся «висящих» трат по нему.
   const deleteDebt = async (id: string) => {
     setDeleteId(null)
+    const expenseIds = payments
+      .filter((p) => p.debt_id === id && p.expense_id)
+      .map((p) => p.expense_id as string)
+    if (expenseIds.length > 0) {
+      const { error: expErr } = await supabase.from('expenses').delete().in('id', expenseIds)
+      if (expErr) {
+        setError(expErr.message)
+        return
+      }
+    }
     const { error } = await supabase.from('debts').delete().eq('id', id)
     if (error) {
       setError(error.message)
