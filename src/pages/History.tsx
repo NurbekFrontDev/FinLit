@@ -3,7 +3,7 @@ import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import PeriodFilter, { type PeriodValue } from '../components/PeriodFilter'
 import { useLang } from '../lib/i18n'
-import { formatSum, monthName } from '../lib/db'
+import { formatSum, monthName, isCharityCategory } from '../lib/db'
 
 type MonthRow = {
   id: string
@@ -18,6 +18,7 @@ type ExpenseRow = {
   month_id: string | null
   subcategory: string | null
   category_id: string | null
+  paid_from_pot: string | null
 }
 
 // label — сырое значение из БД (либо служебный sentinel), переводим при отрисовке.
@@ -72,7 +73,7 @@ export default function History() {
           supabase.from('incomes').select('amount, month_id, source').eq('user_id', user.id),
           supabase
             .from('expenses')
-            .select('amount, month_id, subcategory, category_id')
+            .select('amount, month_id, subcategory, category_id, paid_from_pot')
             .eq('user_id', user.id),
           supabase.from('categories').select('id, name, archived').eq('user_id', user.id),
         ])
@@ -108,6 +109,11 @@ export default function History() {
         }
         for (const r of (expRes.data ?? []) as ExpenseRow[]) {
           if (!r.month_id) continue
+          // Пополнение копилки благотворительности (отложенные 5% без paid_from_pot)
+          // — это перенос в копилку, а не трата. В историю трат не включаем.
+          // Само пожертвование (paid_from_pot === 'charity') остаётся как реальная отдача.
+          const isCharity = !!r.category_id && isCharityCategory(catName[r.category_id])
+          if (isCharity && !r.paid_from_pot) continue
           ensure(r.month_id).expense += Number(r.amount)
           const sub = (r.subcategory ?? '').trim()
           let key: string

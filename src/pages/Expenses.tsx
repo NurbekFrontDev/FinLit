@@ -135,16 +135,24 @@ export default function Expenses() {
     return c.archived ? `${tr(c.name)} ${t('exp.deleted')}` : tr(c.name)
   }
 
-  const total = items.reduce((s, i) => s + Number(i.amount), 0)
-  // Отложенное в Сбережения/Инвестиции — это не трата, а перенос в копилку.
-  // Считаем отдельно, чтобы «Расходы» совпадали с дашбордом.
+  // «В копилки» — деньги, отложенные в копилки (Сбережения/Инвестиции и
+  // благотворительность). Считаем только пополнения: записи без paid_from_pot.
+  // Снятие/пожертвование из копилки (paid_from_pot) сюда НЕ входит.
   const toSavings = items
     .filter((i) => {
+      if (i.paid_from_pot) return false
       const n = categories.find((c) => c.id === i.category_id)?.name
       return isSavingsCategory(n) || isCharityCategory(n)
     })
     .reduce((s, i) => s + Number(i.amount), 0)
-  const realTotal = total - toSavings
+  // «Расходы» — реальные траты на жизнь. Накопления и благотворительность
+  // исключаем целиком, чтобы совпадало с карточкой «Расходы» на дашборде.
+  const realTotal = items
+    .filter((i) => {
+      const n = categories.find((c) => c.id === i.category_id)?.name
+      return !isSavingsCategory(n) && !isCharityCategory(n)
+    })
+    .reduce((s, i) => s + Number(i.amount), 0)
 
   const categoryOptions = categories.filter((c) => !c.archived).map((c) => ({ value: c.id, label: tr(c.name) }))
 
@@ -384,9 +392,6 @@ export default function Expenses() {
                   />
                   {t('exp.donate')}
                 </label>
-                {fromPot === 'charity' && (
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('exp.donateHint')}</p>
-                )}
               </div>
             ) : !isSavingsCategory(categories.find((c) => c.id === categoryId)?.name) ? (
               <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-700">
