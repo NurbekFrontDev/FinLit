@@ -125,6 +125,7 @@ export const SUBCATEGORY_PRESETS: Record<string, string[]> = {
   'Свободные': ['Подписки', 'Хобби', 'Разное'],
   'Сбережения': ['Подушка безопасности', 'Накопления'],
   'Инвестиции': ['Акции', 'Криптовалюта', 'Вклад'],
+  'Благотворительность': ['Крупное пожертвование', 'Маленькие пожертвования'],
 }
 
 // Пресеты источников дохода (можно дополнять своими).
@@ -389,6 +390,15 @@ export function isCharityCategory(name: string | null | undefined): boolean {
   return !!name && CHARITY_CATEGORY_NAMES.includes(name.trim())
 }
 
+// Подкатегории благотворительности: делим копилку на крупную цель и маленькие
+// пожертвования (по тому же принципу, что подушка внутри Сбережений).
+export const CHARITY_BIG_SUBCATEGORY = 'Крупное пожертвование'
+export const CHARITY_SMALL_SUBCATEGORY = 'Маленькие пожертвования'
+
+export function isCharityBigSubcategory(sub: string | null | undefined): boolean {
+  return !!sub && sub.trim() === CHARITY_BIG_SUBCATEGORY
+}
+
 // Категории, которые НЕ учитываются при расчёте подушки безопасности:
 // накопления (остаются твоими), долги (разовые/временные) и благотворительность («не мои» деньги).
 export function isCushionExcludedCategory(name: string | null | undefined): boolean {
@@ -568,4 +578,115 @@ export async function saveCushionMonths(userId: string, n: number): Promise<void
       { user_id: userId, cushion_months: v, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' },
     )
+}
+
+// ===== Благотворительность: распределение 5% и крупная цель =====
+// Логика как у «Целей» (80/20): доля крупного пожертвования в процентах (0..100),
+// остальное -- маленькие пожертвования. Храним в app_settings (синхронизация между устройствами).
+export const DEFAULT_CHARITY_SPLIT = 70
+
+export async function loadCharitySplit(userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('charity_primary_split')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return DEFAULT_CHARITY_SPLIT
+  const v = Number((data as { charity_primary_split?: number } | null)?.charity_primary_split)
+  return Number.isFinite(v) && v >= 0 && v <= 100 ? v : DEFAULT_CHARITY_SPLIT
+}
+
+export async function saveCharitySplit(userId: string, value: number): Promise<void> {
+  const v = Math.max(0, Math.min(100, Math.round(value)))
+  await supabase
+    .from('app_settings')
+    .upsert(
+      { user_id: userId, charity_primary_split: v, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    )
+}
+
+// Параметры крупного пожертвования (название, целевая сумма, дата). Одна цель на пользователя.
+export type CharityGoal = { name: string; target: number; date: string | null }
+
+export async function loadCharityGoal(userId: string): Promise<CharityGoal> {
+  const empty: CharityGoal = { name: '', target: 0, date: null }
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('charity_goal_name, charity_goal_target, charity_goal_date')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error || !data) return empty
+  const d = data as {
+    charity_goal_name?: string | null
+    charity_goal_target?: number | null
+    charity_goal_date?: string | null
+  }
+  return {
+    name: d.charity_goal_name ?? '',
+    target: Number(d.charity_goal_target) || 0,
+    date: d.charity_goal_date ?? null,
+  }
+}
+
+export async function saveCharityGoal(userId: string, goal: CharityGoal): Promise<void> {
+  await supabase
+    .from('app_settings')
+    .upsert(
+      {
+        user_id: userId,
+        charity_goal_name: goal.name || null,
+        charity_goal_target: goal.target || 0,
+        charity_goal_date: goal.date || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+}
+
+// Балансы копилки благотворительности по двум подкатегориям (крупное / маленькие).
+// big + small = charity из loadSavingsPots. Пополнение -- расход в категории
+// «Благотворительность» без paid_from_pot; пожертвование -- расход с paid_from_pot='charity'.
+// Записи без подкатегории считаем маленькими (обратная совместимость).
+export type CharityPotsStats = { big: number; small: number; total: number }
+
+export async function loadCharityPots(userId: string): Promise<CharityPotsStats> {
+  const { data: cats, error: eCats } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', userId)
+  if (eCats) throw eCats
+  const charityIds = new Set(
+    ((cats ?? []) as { id: string; name: string }[])
+      .filter((c) => isCharityCategory(c.name))
+      .map((c) => c.id),
+  )
+
+  const { data: exps, error } = await supabase
+    .from('expenses')
+    .select('amount, category_id, subcategory, paid_from_pot')
+    .eq('user_id', userId)
+  if (error) throw error
+
+  let big = 0
+  let small = 0
+  for (const ex of (exps ?? []) as {
+    amount: number
+    category_id: string | null
+    subcategory: string | null
+    paid_from_pot: string | null
+  }[]) {
+    const a = Number(ex.amount) || 0
+    const isBig = isCharityBigSubcategory(ex.subcategory)
+    if (ex.paid_from_pot === 'charity') {
+      // пожертвование (снятие из копилки)
+      if (isBig) big -= a
+      else small -= a
+    } else if (ex.category_id && charityIds.has(ex.category_id)) {
+      // пополнение копилки (отложенные 5%)
+      if (isBig) big += a
+      else small += a
+    }
+  }
+  return { big, small, total: big + small }
 }

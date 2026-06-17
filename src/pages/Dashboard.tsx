@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { useLang } from '../lib/i18n'
@@ -40,6 +41,7 @@ function Card({ label, value, accent }: { label: string; value: string; accent?:
 export default function Dashboard() {
   const { user } = useAuth()
   const { t, tr } = useLang()
+  const navigate = useNavigate()
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth() + 1
@@ -242,12 +244,20 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div className="flex flex-1 flex-col justify-center rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 dark:border-rose-500/20">
-                <p className="text-sm font-medium">{t('charity.title')}</p>
+              <button
+                type="button"
+                onClick={() => navigate('/charity')}
+                className="flex flex-1 flex-col justify-center rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-left transition hover:bg-rose-500/10 dark:border-rose-500/20"
+              >
+                <p className="flex items-center justify-between text-sm font-medium">
+                  {t('charity.title')}
+                  <span className="text-rose-500" aria-hidden>›</span>
+                </p>
                 <p className="mt-1 text-2xl font-semibold text-rose-600 dark:text-rose-400">
                   {formatSum(pots.charity)}
                 </p>
-              </div>
+                <span className="mt-1 text-xs text-rose-600/70 dark:text-rose-400/70">{t('charity.openHint')}</span>
+              </button>
             </div>
           </div>
 
