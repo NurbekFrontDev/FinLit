@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import Select from '../components/Select'
 import Combobox from '../components/Combobox'
 import DatePicker from '../components/DatePicker'
+import IconButton from '../components/IconButton'
 import { useLang } from '../lib/i18n'
 import {
   formatSum,
@@ -51,8 +52,6 @@ const btnPrimary =
   'rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400'
 const btnGhost =
   'rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
-const btnMuted =
-  'text-sm text-red-500 transition hover:text-red-600 dark:text-red-400 dark:hover:text-red-300'
 const sectionTitle = 'text-xl font-semibold'
 
 const chipCls = (active: boolean) =>
@@ -133,6 +132,12 @@ export default function Goals() {
   const [buyCategory, setBuyCategory] = useState<string>('')
   const [buySub, setBuySub] = useState('')
   const [buyDate, setBuyDate] = useState(new Date().toISOString().slice(0, 10))
+
+  // Правка желания прямо в карточке: название, сумма, заметка.
+  const [editWishId, setEditWishId] = useState<string | null>(null)
+  const [editWishName, setEditWishName] = useState('')
+  const [editWishPrice, setEditWishPrice] = useState('')
+  const [editWishNote, setEditWishNote] = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -295,6 +300,34 @@ export default function Goals() {
     setPrice('')
     setNote('')
     setWishSub('')
+  }
+
+  const startEditWish = (g: Goal) => {
+    setEditWishId(g.id)
+    setEditWishName(g.name)
+    setEditWishPrice(g.target_amount ? formatAmountInput(String(g.target_amount)) : '')
+    setEditWishNote(g.note ?? '')
+    setError(null)
+  }
+
+  const saveWish = async (id: string) => {
+    if (!editWishName.trim()) return
+    const { data, error } = await supabase
+      .from('goals')
+      .update({
+        name: editWishName.trim(),
+        target_amount: parseAmount(editWishPrice),
+        note: editWishNote.trim() || null,
+      })
+      .eq('id', id)
+      .select(GOAL_COLS)
+      .single()
+    if (error || !data) {
+      setError(error?.message ?? t('common.error'))
+      return
+    }
+    setGoals(goals.map((x) => (x.id === id ? (data as Goal) : x)))
+    setEditWishId(null)
   }
 
   const openGoalForm = (g: Goal) => {
@@ -730,9 +763,7 @@ export default function Goals() {
                 {t('goals.makePrimary')}
               </button>
             )}
-            <button onClick={() => removeGoal(g.id)} className={btnMuted}>
-              {t('common.delete')}
-            </button>
+            <IconButton icon="delete" title={t('common.delete')} onClick={() => removeGoal(g.id)} />
           </div>
         )}
 
@@ -996,27 +1027,65 @@ export default function Goals() {
                     key={g.id}
                     className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/40"
                   >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{g.name}</p>
-                        {g.category && (
-                          <span className={`rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
-                            {tr(g.category)}
-                          </span>
-                        )}
-                        {g.subcategory && (
-                          <span className="rounded-full bg-neutral-500/15 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
-                            {tr(g.subcategory)}
-                          </span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{g.name}</p>
+                          {g.category && (
+                            <span className={`rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
+                              {tr(g.category)}
+                            </span>
+                          )}
+                          {g.subcategory && (
+                            <span className="rounded-full bg-neutral-500/15 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                              {tr(g.subcategory)}
+                            </span>
+                          )}
+                        </div>
+                        {g.note && <p className="text-xs text-neutral-500">{g.note}</p>}
+                        {g.target_amount > 0 && (
+                          <p className="text-xs text-neutral-500">≈ {formatSum(g.target_amount)}</p>
                         )}
                       </div>
-                      {g.note && <p className="text-xs text-neutral-500">{g.note}</p>}
-                      {g.target_amount > 0 && (
-                        <p className="text-xs text-neutral-500">≈ {formatSum(g.target_amount)}</p>
+                      {buyFormId !== g.id && goalFormId !== g.id && editWishId !== g.id && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <IconButton icon="edit" title={t('common.edit')} onClick={() => startEditWish(g)} />
+                          <IconButton icon="delete" title={t('common.delete')} onClick={() => removeGoal(g.id)} />
+                        </div>
                       )}
                     </div>
                     {buyFormId === g.id ? (
                       renderBuyForm(g)
+                    ) : editWishId === g.id ? (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          value={editWishName}
+                          onChange={(e) => setEditWishName(e.target.value)}
+                          placeholder={t('goals.wishName')}
+                          className={inputCls}
+                        />
+                        <input
+                          inputMode="decimal"
+                          value={editWishPrice}
+                          onChange={(e) => setEditWishPrice(formatAmountInput(e.target.value))}
+                          placeholder={t('goals.priceApprox')}
+                          className={inputCls}
+                        />
+                        <input
+                          value={editWishNote}
+                          onChange={(e) => setEditWishNote(e.target.value)}
+                          placeholder={t('goals.note')}
+                          className={inputCls}
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => saveWish(g.id)} className={btnPrimary}>
+                            {t('common.save')}
+                          </button>
+                          <button onClick={() => setEditWishId(null)} className={btnGhost}>
+                            {t('common.cancel')}
+                          </button>
+                        </div>
+                      </div>
                     ) : goalFormId === g.id ? (
                       <div className="flex flex-col gap-2">
                         <input
@@ -1050,9 +1119,6 @@ export default function Goals() {
                             {t('goals.achieved')}
                           </button>
                         )}
-                        <button onClick={() => removeGoal(g.id)} className={btnMuted}>
-                          {t('common.delete')}
-                        </button>
                       </div>
                     )}
                   </div>

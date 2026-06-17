@@ -5,6 +5,7 @@ import Combobox from '../components/Combobox'
 import Select from '../components/Select'
 import DatePicker from '../components/DatePicker'
 import PeriodFilter, { type PeriodValue } from '../components/PeriodFilter'
+import IconButton from '../components/IconButton'
 import Debts from './Debts'
 import { useLang } from '../lib/i18n'
 import {
@@ -550,19 +551,9 @@ export default function Expenses() {
                         {i.paid_from_pot ? ` · ${i.paid_from_pot === 'cushion' ? t('exp.fromCushion') : i.paid_from_pot === 'charity' ? t('exp.fromCharity') : t('exp.fromFree')}` : ''}
                       </p>
                     </div>
-                    <div className="flex shrink-0 gap-3 text-sm">
-                      <button
-                        onClick={() => startEdit(i)}
-                        className="text-neutral-500 transition hover:text-emerald-600 dark:hover:text-emerald-400"
-                      >
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        onClick={() => removeExpense(i.id)}
-                        className="text-red-500 transition hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                      >
-                        {t('common.delete')}
-                      </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <IconButton icon="edit" title={t('common.edit')} onClick={() => startEdit(i)} />
+                      <IconButton icon="delete" title={t('common.delete')} onClick={() => removeExpense(i.id)} />
                     </div>
                   </div>
                   )
