@@ -697,6 +697,7 @@ const CONTENT_EN: Record<string, string> = {
   'Здоровье и врачи': 'Health & doctors',
   'Уход за собой': 'Self-care',
   'Услуги и ремонт': 'Services & repair',
+  'Связь и интернет': 'Communication & internet',
   'Впечатления': 'Experiences',
   // Названия валют
   'Доллар': 'Dollar',
