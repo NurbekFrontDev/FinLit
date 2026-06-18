@@ -28,7 +28,7 @@ type Payment = {
   date: string
   expense_id: string | null
 }
-type Category = { id: string; name: string; archived?: boolean }
+type Category = { id: string; name: string; percent?: number; archived?: boolean }
 
 const DEBT_COLS = 'id, person, amount, note, archived, created_at, sort_order'
 const PAYMENT_COLS = 'id, debt_id, amount, date, expense_id'
@@ -51,6 +51,8 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  // Доход за текущий месяц — нужен, чтобы посчитать бюджет категории «Долги» (её % от дохода).
+  const [received, setReceived] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -108,7 +110,9 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
     ;(async () => {
       try {
         setLoading(true)
-        const [dRes, pRes, cRes] = await Promise.all([
+        const now = new Date()
+        const m = await getOrCreateMonth(user.id, now.getFullYear(), now.getMonth() + 1)
+        const [dRes, pRes, cRes, incRes] = await Promise.all([
           supabase
             .from('debts')
             .select(DEBT_COLS)
@@ -117,17 +121,22 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
           supabase.from('debt_payments').select(PAYMENT_COLS).eq('user_id', user.id),
           supabase
             .from('categories')
-            .select('id, name, archived')
+            .select('id, name, percent, archived')
             .eq('user_id', user.id)
             .order('sort_order'),
+          supabase.from('incomes').select('amount').eq('month_id', m.id),
         ])
         if (!active) return
         if (dRes.error) throw dRes.error
         if (pRes.error) throw pRes.error
         if (cRes.error) throw cRes.error
+        if (incRes.error) throw incRes.error
         setDebts((dRes.data ?? []) as Debt[])
         setPayments((pRes.data ?? []) as Payment[])
         setCategories((cRes.data ?? []) as Category[])
+        setReceived(
+          (incRes.data ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0),
+        )
       } catch (e) {
         if (active) setError((e as Error).message)
       } finally {
@@ -143,6 +152,15 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
   const debtCategory = categories.find(
     (c) => !c.archived && (c.name === 'Долги' || c.name.toLowerCase().startsWith('долг')),
   )
+
+  // Бюджет категории «Долги» в этом месяце (её % от дохода) и сколько из него уже выплачено.
+  const debtPercent = debtCategory ? Number(debtCategory.percent ?? 0) : 0
+  const debtsBudget = (received * debtPercent) / 100
+  const ymPrefix = new Date().toISOString().slice(0, 7)
+  const paidThisMonth = payments
+    .filter((p) => (p.date ?? '').startsWith(ymPrefix))
+    .reduce((s, p) => s + Number(p.amount), 0)
+  const canPayThisMonth = Math.max(0, debtsBudget - paidThisMonth)
 
   const paidFor = (debtId: string) =>
     payments.filter((p) => p.debt_id === debtId).reduce((s, p) => s + Number(p.amount), 0)
@@ -668,6 +686,20 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
           </span>
         )}
       </div>
+
+      {debtCategory && debtsBudget > 0 && (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
+          <p className="text-sm">{t('debts.budgetThisMonth', { v: formatSum(debtsBudget) })}</p>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
+          </p>
+          {canPayThisMonth > 0 && (
+            <p className="mt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              {t('debts.canPayThisMonth', { v: formatSum(canPayThisMonth) })}
+            </p>
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={addDebt}

@@ -22,9 +22,6 @@ export default function Settings() {
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
         <div className="min-w-0">
           <p className="font-medium">🌐 {t('set.language')}</p>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {t('set.langNow', { v: lang === 'en' ? 'English' : 'Русский' })}
-          </p>
         </div>
         <div className="w-40 shrink-0">
           <Select
@@ -41,9 +38,6 @@ export default function Settings() {
       <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
         <div>
           <p className="font-medium">{t('set.theme')}</p>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {t('set.themeNow', { v: theme === 'dark' ? t('set.dark') : t('set.light') })}
-          </p>
         </div>
         <button
           onClick={toggle}
