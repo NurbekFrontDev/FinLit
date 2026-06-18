@@ -65,7 +65,10 @@ export default function Dashboard() {
         const m = await getOrCreateMonth(user.id, year, month)
         const mm = String(month).padStart(2, '0')
         const monthStart = `${year}-${mm}-01`
-        const monthEnd = `${year}-${mm}-31`
+        // Последний день месяца зависит от месяца (28–31). Раньше было жёстко "-31",
+        // поэтому в июне (30 дней) Postgres падал: date/time field value out of range: 2026-06-31.
+        const lastDay = new Date(year, month, 0).getDate()
+        const monthEnd = `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
         const [catRes, incRes, expRes, contribRes] = await Promise.all([
           supabase
             .from('categories')
