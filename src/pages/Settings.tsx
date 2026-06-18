@@ -1,6 +1,7 @@
 import { useAuth } from '../lib/AuthContext'
 import { useTheme } from '../lib/ThemeContext'
 import Select from '../components/Select'
+import CurrencyConverter from '../components/CurrencyConverter'
 import { useLang } from '../lib/i18n'
 
 export default function Settings() {
@@ -51,6 +52,8 @@ export default function Settings() {
           {theme === 'dark' ? t('set.toLight') : t('set.toDark')}
         </button>
       </div>
+
+      <CurrencyConverter />
 
       <button
         onClick={() => signOut()}

@@ -615,6 +615,14 @@ export default function Goals() {
   const mainBudget = (goalsBudget * split) / 100
   const secBudget = (goalsBudget * (100 - split)) / 100
 
+  // Сколько уже отложено в цели в текущем месяце (по дате вклада).
+  // Это «зарезервированные» из 20%-бюджета «Цели» деньги — показываем, сколько ещё можно отложить.
+  const ymPrefix = new Date().toISOString().slice(0, 7)
+  const setAsideThisMonth = contribs
+    .filter((c) => (c.date ?? '').startsWith(ymPrefix))
+    .reduce((s, c) => s + Number(c.amount), 0)
+  const goalsLeftThisMonth = Math.max(0, goalsBudget - setAsideThisMonth)
+
   const sortedWishes = [...wishes].sort((a, b) => {
     if (byPriority) {
       const d = catPriority(a.category) - catPriority(b.category)
@@ -863,19 +871,9 @@ export default function Goals() {
                     <span className="text-neutral-700 dark:text-neutral-300">
                       {formatDateHuman(c.date)} · {formatSum(Number(c.amount))}
                     </span>
-                    <div className="flex shrink-0 gap-3">
-                      <button
-                        onClick={() => startEditContrib(c)}
-                        className="text-neutral-500 transition hover:text-emerald-600 dark:hover:text-emerald-400"
-                      >
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        onClick={() => removeContribution(c.id)}
-                        className="text-red-500 transition hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                      >
-                        {t('common.delete')}
-                      </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <IconButton icon="edit" title={t('common.edit')} onClick={() => startEditContrib(c)} />
+                      <IconButton icon="delete" title={t('common.delete')} onClick={() => removeContribution(c.id)} />
                     </div>
                   </div>
                 ),
@@ -965,6 +963,14 @@ export default function Goals() {
                     <p className="font-medium text-sky-600 dark:text-sky-400">{formatSum(secBudget)}</p>
                   </div>
                 </div>
+                <p className="text-xs text-neutral-500">
+                  {t('goals.setAsideThisMonth', { v: formatSum(setAsideThisMonth), b: formatSum(goalsBudget) })}
+                </p>
+                {goalsLeftThisMonth > 0 && (
+                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    {t('goals.canSetAside', { v: formatSum(goalsLeftThisMonth) })}
+                  </p>
+                )}
               </>
             ) : (
               <p className="text-xs text-amber-600 dark:text-amber-400">{t('goals.noGoalsCat')}</p>
@@ -1017,7 +1023,7 @@ export default function Goals() {
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-neutral-500">{t('common.sort')}:</span>
+                  <span className="text-xs text-neutral-500">{t('common.sort')}</span>
                   <button type="button" onClick={() => setByPriority((v) => !v)} className={chipCls(byPriority)}>
                     {t('goals.byPriority')}
                   </button>

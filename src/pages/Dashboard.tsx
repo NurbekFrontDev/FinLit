@@ -63,7 +63,10 @@ export default function Dashboard() {
       try {
         setLoading(true)
         const m = await getOrCreateMonth(user.id, year, month)
-        const [catRes, incRes, expRes] = await Promise.all([
+        const mm = String(month).padStart(2, '0')
+        const monthStart = `${year}-${mm}-01`
+        const monthEnd = `${year}-${mm}-31`
+        const [catRes, incRes, expRes, contribRes] = await Promise.all([
           supabase
             .from('categories')
             .select('id, name, percent, sort_order')
@@ -72,11 +75,18 @@ export default function Dashboard() {
             .order('sort_order'),
           supabase.from('incomes').select('amount').eq('month_id', m.id),
           supabase.from('expenses').select('amount, category_id, paid_from_pot').eq('month_id', m.id),
+          supabase
+            .from('goal_contributions')
+            .select('amount, date')
+            .eq('user_id', user.id)
+            .gte('date', monthStart)
+            .lte('date', monthEnd),
         ])
         if (!active) return
         if (catRes.error) throw catRes.error
         if (incRes.error) throw incRes.error
         if (expRes.error) throw expRes.error
+        if (contribRes.error) throw contribRes.error
 
         const cats = (catRes.data ?? []) as Category[]
         const incomeSum = (incRes.data ?? []).reduce(
@@ -98,6 +108,17 @@ export default function Dashboard() {
           if (!e.category_id) continue
           if (e.paid_from_pot === 'charity') continue // пожертвование из копилки — не пополнение бюджета «Благотворительность»
           factByCat[e.category_id] = (factByCat[e.category_id] ?? 0) + Number(e.amount)
+        }
+        // Вклады в цели («отложить») за этот месяц — это резерв из бюджета «Цели», а не трата.
+        // Поэтому добавляем их в «факт» категории «Цели» (в «План против факта»), но НЕ в карточку
+        // «Расходы» и НЕ в историю — деньги не ушли, а просто отложены в копилку цели.
+        const goalsCat = cats.find((c) => c.name.startsWith('Цели'))
+        if (goalsCat) {
+          const contribSum = ((contribRes.data ?? []) as { amount: number }[]).reduce(
+            (s, r) => s + Number(r.amount),
+            0,
+          )
+          if (contribSum > 0) factByCat[goalsCat.id] = (factByCat[goalsCat.id] ?? 0) + contribSum
         }
         const expenseSum = ((expRes.data ?? []) as { amount: number; category_id: string | null }[])
           .filter((e) => !e.category_id || (!savingsCatIds.has(e.category_id) && !charityCatIds.has(e.category_id)))
