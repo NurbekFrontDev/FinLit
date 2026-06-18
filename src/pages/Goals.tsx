@@ -536,6 +536,12 @@ export default function Goals() {
     try {
       const d = new Date(buyDate + 'T00:00:00')
       const month = await getOrCreateMonth(user.id, d.getFullYear(), d.getMonth() + 1)
+      // Если цель копили вкладами (goal_contributions) — эти деньги уже были учтены
+      // в бюджете «Цели» в месяцы, когда их откладывали. Поэтому покупку помечаем
+      // paid_from_pot = 'goals': она остаётся реальным расходом в списке и в истории,
+      // но НЕ удваивает бюджет (не входит в «План против факта» и карточку «Расходы»).
+      // Если вкладов не было (спонтанная покупка) — это обычный расход дохода месяца.
+      const paidFromPot = savedFor(g.id) > 0 ? 'goals' : null
       const { data: exp, error: expErr } = await supabase
         .from('expenses')
         .insert({
@@ -546,6 +552,7 @@ export default function Goals() {
           category_id: buyCategory || null,
           subcategory: buySub.trim() || null,
           month_id: month.id,
+          paid_from_pot: paidFromPot,
         })
         .select('id')
         .single()

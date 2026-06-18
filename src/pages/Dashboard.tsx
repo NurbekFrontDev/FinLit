@@ -106,7 +106,12 @@ export default function Dashboard() {
         const factByCat: Record<string, number> = {}
         for (const e of (expRes.data ?? []) as { amount: number; category_id: string | null; paid_from_pot: string | null }[]) {
           if (!e.category_id) continue
-          if (e.paid_from_pot === 'charity') continue // пожертвование из копилки — не пополнение бюджета «Благотворительность»
+          // Трата из любой копилки (подушка/накопления/благотворительность/цель) — это
+          // снятие ранее отложенных денег, а не трата дохода этого месяца. Деньги уже
+          // были учтены, когда их откладывали, поэтому в «План против факта» их не
+          // считаем (иначе бюджет «выйдет за рамки %»). В списке расходов и в истории
+          // запись остаётся.
+          if (e.paid_from_pot) continue
           factByCat[e.category_id] = (factByCat[e.category_id] ?? 0) + Number(e.amount)
         }
         // Вклады в цели («отложить») за этот месяц — это резерв из бюджета «Цели», а не трата.
@@ -120,7 +125,10 @@ export default function Dashboard() {
           )
           if (contribSum > 0) factByCat[goalsCat.id] = (factByCat[goalsCat.id] ?? 0) + contribSum
         }
-        const expenseSum = ((expRes.data ?? []) as { amount: number; category_id: string | null }[])
+        const expenseSum = ((expRes.data ?? []) as { amount: number; category_id: string | null; paid_from_pot: string | null }[])
+          // Траты из копилок (paid_from_pot) — снятие ранее отложенных денег, а не
+          // расход дохода этого месяца, поэтому в карточку «Расходы» их не включаем.
+          .filter((e) => !e.paid_from_pot)
           .filter((e) => !e.category_id || (!savingsCatIds.has(e.category_id) && !charityCatIds.has(e.category_id)))
           .reduce((s, e) => s + Number(e.amount), 0)
         const planned = Number(m.planned_income) || 0

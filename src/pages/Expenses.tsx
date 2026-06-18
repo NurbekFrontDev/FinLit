@@ -31,7 +31,7 @@ type Expense = {
   description: string | null
   category_id: string | null
   subcategory: string | null
-  paid_from_pot: 'cushion' | 'free' | 'charity' | null
+  paid_from_pot: 'cushion' | 'free' | 'charity' | 'goals' | null
   created_at: string
 }
 
@@ -147,7 +147,10 @@ export default function Expenses() {
   // Благотворительность без paid_from_pot) прибавляет; снятие/пожертвование из любой
   // копилки (paid_from_pot) вычитает. Поэтому «положил 3, отдал 3» даёт 0.
   const toSavings = items.reduce((s, i) => {
-    if (i.paid_from_pot) return s - Number(i.amount)
+    // Снятие из копилок подушки/накоплений/благотворительности уменьшает «В копилки».
+    // Покупка цели (paid_from_pot = 'goals') берётся из вкладов в цель, а не из этих
+    // копилок, поэтому на «В копилки» не влияет.
+    if (i.paid_from_pot && i.paid_from_pot !== 'goals') return s - Number(i.amount)
     const n = categories.find((c) => c.id === i.category_id)?.name
     if (isSavingsCategory(n) || isCharityCategory(n)) return s + Number(i.amount)
     return s
@@ -156,6 +159,9 @@ export default function Expenses() {
   // исключаем целиком, чтобы совпадало с карточкой «Расходы» на дашборде.
   const realTotal = items
     .filter((i) => {
+      // Траты из копилок (paid_from_pot) — снятие ранее отложенных денег, а не расход
+      // дохода этого месяца, поэтому в «Расходах» их не считаем (как и на дашборде).
+      if (i.paid_from_pot) return false
       const n = categories.find((c) => c.id === i.category_id)?.name
       return !isSavingsCategory(n) && !isCharityCategory(n)
     })
@@ -584,7 +590,7 @@ export default function Expenses() {
                         {catName(i.category_id)}
                         {i.subcategory ? ` · ${tr(i.subcategory)}` : ''} · {formatDateHuman(i.date)}
                         {i.description ? ` · ${i.description}` : ''}
-                        {i.paid_from_pot ? ` · ${i.paid_from_pot === 'cushion' ? t('exp.fromCushion') : i.paid_from_pot === 'charity' ? t('exp.fromCharity') : t('exp.fromFree')}` : ''}
+                        {i.paid_from_pot ? ` · ${i.paid_from_pot === 'cushion' ? t('exp.fromCushion') : i.paid_from_pot === 'charity' ? t('exp.fromCharity') : i.paid_from_pot === 'goals' ? t('exp.fromGoals') : t('exp.fromFree')}` : ''}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
