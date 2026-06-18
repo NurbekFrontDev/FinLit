@@ -85,7 +85,6 @@ export default function CurrencyConverter() {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
       <p className="font-medium">{t('conv.title')}</p>
-      <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{t('conv.hint')}</p>
 
       <div className="mt-4 flex flex-col gap-2">
         {rows.map((r) => (
@@ -94,7 +93,6 @@ export default function CurrencyConverter() {
               <p className="text-sm font-medium">
                 <span className="text-neutral-400">{r.symbol}</span> {r.code}
               </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">{r.name}</p>
             </div>
             <input
               inputMode="decimal"
