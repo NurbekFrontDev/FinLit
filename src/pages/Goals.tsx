@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import Select from '../components/Select'
@@ -144,6 +144,39 @@ export default function Goals() {
   const [editGoalName, setEditGoalName] = useState('')
   const [editGoalTarget, setEditGoalTarget] = useState('')
   const [editGoalDate, setEditGoalDate] = useState('')
+
+  // Перемещение второстепенных целей (тот же стиль, что в «Бюджете»).
+  // Порядок храним локально (в goals нет sort_order), чтобы не менять схему БД.
+  const [reorderGoals, setReorderGoals] = useState(false)
+  const [secOrder, setSecOrder] = useState<string[]>([])
+  type DragState = {
+    id: string
+    fromIndex: number
+    overIndex: number
+    startY: number
+    offset: number
+    slot: number
+    active: boolean
+    settling: boolean
+  }
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const dragRef = useRef<DragState | null>(null)
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const settleTimer = useRef<number | null>(null)
+  useEffect(() => {
+    return () => {
+      if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    }
+  }, [])
+  useEffect(() => {
+    if (!user) return
+    try {
+      const raw = localStorage.getItem('finlit-sec-order-' + user.id)
+      if (raw) setSecOrder(JSON.parse(raw) as string[])
+    } catch {
+      // повреждённое значение — игнорируем
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -615,6 +648,129 @@ export default function Goals() {
   const primaryGoal = activeGoals.find((g) => g.is_primary) ?? null
   const secondaryGoals = activeGoals.filter((g) => g.id !== primaryGoal?.id)
 
+  // Второстепенные цели в сохранённом порядке (новые — в конец).
+  const orderedSecondary = [...secondaryGoals].sort((a, b) => {
+    const ia = secOrder.indexOf(a.id)
+    const ib = secOrder.indexOf(b.id)
+    if (ia === -1 && ib === -1) return 0
+    if (ia === -1) return 1
+    if (ib === -1) return -1
+    return ia - ib
+  })
+
+  const persistSecOrder = (ids: string[]) => {
+    setSecOrder(ids)
+    if (user) {
+      try {
+        localStorage.setItem('finlit-sec-order-' + user.id, JSON.stringify(ids))
+      } catch {
+        // localStorage недоступен — порядок останется только на время сессии
+      }
+    }
+  }
+
+  const startDrag = (e: React.PointerEvent, id: string, index: number) => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const el = rowRefs.current.get(id)
+    const slot = (el?.offsetHeight ?? 56) + 8
+    const next: DragState = {
+      id,
+      fromIndex: index,
+      overIndex: index,
+      startY: e.clientY,
+      offset: 0,
+      slot,
+      active: false,
+      settling: false,
+    }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d || d.settling) return
+    const offset = e.clientY - d.startY
+    const active = d.active || Math.abs(offset) > 6
+    const steps = Math.round(offset / d.slot)
+    const overIndex = Math.max(0, Math.min(orderedSecondary.length - 1, d.fromIndex + steps))
+    if (offset === d.offset && overIndex === d.overIndex && active === d.active) return
+    const next: DragState = { ...d, offset, overIndex, active }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  const endDrag = (e?: React.PointerEvent) => {
+    if (e) {
+      try {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch {
+        // уже отпущен
+      }
+    }
+    const d = dragRef.current
+    if (!d) return
+    if (!d.active) {
+      dragRef.current = null
+      setDrag(null)
+      return
+    }
+    const slot = d.slot
+    const targetOffset = (d.overIndex - d.fromIndex) * slot
+    const settling: DragState = { ...d, settling: true, offset: targetOffset }
+    dragRef.current = settling
+    setDrag(settling)
+    if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    settleTimer.current = window.setTimeout(() => {
+      settleTimer.current = null
+      if (d.overIndex !== d.fromIndex) {
+        const next = orderedSecondary.slice()
+        const [moved] = next.splice(d.fromIndex, 1)
+        next.splice(d.overIndex, 0, moved)
+        persistSecOrder(next.map((g) => g.id))
+      }
+      dragRef.current = null
+      setDrag(null)
+    }, 210)
+  }
+
+  const dragStyle = (id: string, index: number): React.CSSProperties | undefined => {
+    if (!drag || !drag.active) return undefined
+    if (id === drag.id) {
+      return {
+        transform: `translateY(${drag.offset}px) scale(${drag.settling ? 1 : 1.03})`,
+        transition: drag.settling ? 'transform 200ms cubic-bezier(0.2, 0, 0, 1)' : 'none',
+        position: 'relative',
+        zIndex: 30,
+      }
+    }
+    let shift = 0
+    if (drag.overIndex > drag.fromIndex && index > drag.fromIndex && index <= drag.overIndex)
+      shift = -drag.slot
+    else if (drag.overIndex < drag.fromIndex && index >= drag.overIndex && index < drag.fromIndex)
+      shift = drag.slot
+    return {
+      transform: `translateY(${shift}px)`,
+      transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
+    }
+  }
+
+  const goalGrip = (g: Goal, index: number) => (
+    <button
+      type="button"
+      aria-label={t('common.reorder')}
+      title={t('common.reorder')}
+      onPointerDown={(e) => startDrag(e, g.id, index)}
+      onPointerMove={moveDrag}
+      onPointerUp={(e) => endDrag(e)}
+      onPointerCancel={(e) => endDrag(e)}
+      className="shrink-0 cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
+    >
+      ⠿
+    </button>
+  )
+
   // Распределение внутри категории «Цели» (80/20 по умолчанию).
   const goalsCat = categories.find((c) => !c.archived && c.name.startsWith('Цели'))
   const goalsPercent = goalsCat ? Number(goalsCat.percent ?? 0) : 0
@@ -1010,21 +1166,57 @@ export default function Goals() {
           {/* Второстепенные цели */}
           <section className="flex flex-col gap-3">
             <hr className="border-neutral-200 dark:border-neutral-800" />
-            <h2 className={sectionTitle}>{t('goals.secondaryGoals')}</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className={sectionTitle}>{t('goals.secondaryGoals')}</h2>
+              {secondaryGoals.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setReorderGoals((v) => !v)}
+                  className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition ${
+                    reorderGoals
+                      ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                      : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  {reorderGoals ? t('common.reorderDone') : t('common.reorder')}
+                </button>
+              )}
+            </div>
             {secondaryGoals.length === 0 ? (
               <p className="text-sm text-neutral-500">{t('goals.noActive')}</p>
+            ) : reorderGoals ? (
+              orderedSecondary.map((g, index) => (
+                <div
+                  key={g.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(g.id, el)
+                    else rowRefs.current.delete(g.id)
+                  }}
+                  style={dragStyle(g.id, index)}
+                  className={`relative flex items-center gap-2 rounded-xl border bg-neutral-50 px-3 py-2.5 dark:bg-neutral-900/40 ${
+                    drag?.id === g.id && drag.active
+                      ? 'border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
+                      : 'border-neutral-200 dark:border-neutral-800'
+                  }`}
+                >
+                  {goalGrip(g, index)}
+                  <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{g.name}</span>
+                  {g.category && (
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${catBadgeCls(g.category)}`}>
+                      {tr(g.category)}
+                    </span>
+                  )}
+                </div>
+              ))
             ) : (
-              secondaryGoals.map(renderActiveGoal)
+              orderedSecondary.map(renderActiveGoal)
             )}
           </section>
 
           {/* Список желаний */}
           <section className="flex flex-col gap-3">
             <hr className="border-neutral-200 dark:border-neutral-800" />
-            <h2 className={sectionTitle}>
-              {t('goals.wantBuy')}
-              <span className="ml-2 text-sm font-normal text-neutral-500">{t('goals.wantBuyHint')}</span>
-            </h2>
+            <h2 className={sectionTitle}>{t('goals.wantBuy')}</h2>
             {wishes.length === 0 ? (
               <p className="text-sm text-neutral-500">{t('goals.emptyList')}</p>
             ) : (

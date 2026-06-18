@@ -160,7 +160,6 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
   const paidThisMonth = payments
     .filter((p) => (p.date ?? '').startsWith(ymPrefix))
     .reduce((s, p) => s + Number(p.amount), 0)
-  const canPayThisMonth = Math.max(0, debtsBudget - paidThisMonth)
 
   const paidFor = (debtId: string) =>
     payments.filter((p) => p.debt_id === debtId).reduce((s, p) => s + Number(p.amount), 0)
@@ -688,17 +687,9 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {debtCategory && debtsBudget > 0 && (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
-          <p className="text-sm">{t('debts.budgetThisMonth', { v: formatSum(debtsBudget) })}</p>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
-          </p>
-          {canPayThisMonth > 0 && (
-            <p className="mt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              {t('debts.canPayThisMonth', { v: formatSum(canPayThisMonth) })}
-            </p>
-          )}
-        </div>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
+        </p>
       )}
 
       <form

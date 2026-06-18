@@ -23,8 +23,9 @@ export default function Settings() {
         <div className="min-w-0">
           <p className="font-medium">🌐 {t('set.language')}</p>
         </div>
-        <div className="w-40 shrink-0">
+        <div className="shrink-0">
           <Select
+            className="w-fit"
             value={lang}
             onChange={(v) => setLang(v as 'ru' | 'en')}
             options={[
