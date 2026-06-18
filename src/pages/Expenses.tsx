@@ -83,7 +83,9 @@ export default function Expenses() {
   const [editCategoryId, setEditCategoryId] = useState('')
   const [editSubcategory, setEditSubcategory] = useState('')
   const [editDescription, setEditDescription] = useState('')
-  const [editFromPot, setEditFromPot] = useState<'' | 'cushion' | 'free' | 'charity'>('')
+  // 'goals' ставится автоматически (покупка цели из вкладов) и не выбирается вручную,
+  // но входит в тип, чтобы правка такого расхода не ломала сборку и сохраняла пометку.
+  const [editFromPot, setEditFromPot] = useState<'' | 'cushion' | 'free' | 'charity' | 'goals'>('')
 
   // Категории грузим один раз.
   useEffect(() => {
