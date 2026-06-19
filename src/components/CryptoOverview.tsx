@@ -164,7 +164,7 @@ export default function CryptoOverview() {
                 type="button"
                 onClick={() => void reload()}
                 disabled={loading}
-                className={btnGhost}
+                className={btnGhost + ' shrink-0 whitespace-nowrap'}
               >
                 {t('inv.refreshPrices')}
               </button>

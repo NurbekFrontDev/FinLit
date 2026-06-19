@@ -346,7 +346,7 @@ export default function Dashboard() {
                       type="button"
                       onClick={() => void reloadCrypto()}
                       disabled={cryptoLoading}
-                      className="rounded-lg border border-neutral-300 px-2.5 py-1 text-xs transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                      className="shrink-0 whitespace-nowrap rounded-lg border border-neutral-300 px-2.5 py-1 text-xs transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
                     >
                       {t('inv.refreshPrices')}
                     </button>

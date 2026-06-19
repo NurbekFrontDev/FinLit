@@ -302,24 +302,17 @@ export default function CryptoPortfolio({ portfolio }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">
-          {t(portfolio === 'meme' ? 'inv.memeTitle' : 'inv.spotTitle')}
-        </h2>
-        <div className="flex items-center gap-2">
-          {pricedAt && (
-            <span className="text-xs text-neutral-400 dark:text-neutral-500">
-              {t('inv.pricedAt', { t: pricedAt })}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void reload()}
-            disabled={loading}
-            className={btnGhost}
-          >
-            {t('inv.refreshPrices')}
-          </button>
-        </div>
+        <span className="min-w-0 truncate text-xs text-neutral-400 dark:text-neutral-500">
+          {pricedAt ? t('inv.pricedAt', { t: pricedAt }) : ''}
+        </span>
+        <button
+          type="button"
+          onClick={() => void reload()}
+          disabled={loading}
+          className={btnGhost + ' shrink-0 whitespace-nowrap'}
+        >
+          {t('inv.refreshPrices')}
+        </button>
       </div>
 
       {error && (
