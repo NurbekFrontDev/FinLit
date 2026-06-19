@@ -7,6 +7,7 @@ import ConfirmDialog from './ConfirmDialog'
 import {
   loadCryptoSnapshotLive,
   loadMonthly,
+  loadBuysByMonth,
   upsertMonthly,
   deleteMonthly,
   fmtUsd,
@@ -34,6 +35,7 @@ export default function CryptoOverview() {
 
   const [snapshot, setSnapshot] = useState<CryptoSnapshot | null>(null)
   const [monthly, setMonthly] = useState<MonthlyStats[]>([])
+  const [buys, setBuys] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,12 +59,14 @@ export default function CryptoOverview() {
     setLoading(true)
     setError(null)
     try {
-      const [snap, months] = await Promise.all([
+      const [snap, months, buysMap] = await Promise.all([
         loadCryptoSnapshotLive(user.id),
         loadMonthly(user.id),
+        loadBuysByMonth(user.id),
       ])
       setSnapshot(snap)
       setMonthly(months)
+      setBuys(buysMap)
       setPricedAt(
         new Date().toLocaleTimeString('ru-RU', {
           hour: '2-digit',
@@ -95,8 +99,11 @@ export default function CryptoOverview() {
       setANote(existing.note ?? '')
       return
     }
-    setADeposit('')
     setANote('')
+    // «Депозит за месяц» подставляем суммой покупок монет за этот месяц:
+    // покупая монету, ты вкладываешь свои деньги. Значение можно изменить вручную.
+    const buyKey = Number(aYear) + '-' + (aMonth + 1)
+    setADeposit(buys[buyKey] ? String(buys[buyKey]) : '')
     // Стоимость на начало подставляем с конца предыдущего месяца (если он есть).
     const selKey = Number(aYear) * 12 + aMonth
     const prev = monthly
@@ -106,7 +113,7 @@ export default function CryptoOverview() {
     setAStart(prev ? String(prev.m.end_value_usd) : '')
     const v = snapshot?.spotValue
     setAEnd(v != null && !Number.isNaN(v) ? String(Math.round(v * 100) / 100) : '')
-  }, [aMonth, aYear, monthly, snapshot])
+  }, [aMonth, aYear, monthly, snapshot, buys])
 
   async function handleSave() {
     if (!user) return
@@ -164,6 +171,9 @@ export default function CryptoOverview() {
           : 'text-neutral-500 dark:text-neutral-400'
 
   const monthLabel = (m: MonthlyStats) => monthName(m.month - 1) + ' ' + m.year
+
+  // Всего внесено своих денег = сумма всех депозитов за все месяцы (без прибыли).
+  const netDeposited = monthly.reduce((s, m) => s + Number(m.deposit_usd), 0)
 
   if (loading) {
     return (
@@ -243,6 +253,10 @@ export default function CryptoOverview() {
                 {t('ov.openFutures', { n: snapshot.openFuturesCount })}
               </div>
             </div>
+            <div>
+              <div className={labelCls}>{t('ov.netDeposited')}</div>
+              <div className="text-base font-semibold">{fmtUsd(netDeposited)}</div>
+            </div>
           </div>
         </div>
       )}
@@ -274,7 +288,12 @@ export default function CryptoOverview() {
                     onClick={() => setToDelete(m)}
                     title={t('common.delete')}
                   />
-                  <span className="truncate">{monthLabel(m)}</span>
+                  <div className="min-w-0 leading-tight">
+                    <span className="block truncate">{monthLabel(m)}</span>
+                    <span className="block truncate text-xs text-neutral-400 dark:text-neutral-500">
+                      {t('ov.investedCol')}: {fmtUsd(Number(m.start_value_usd) + Number(m.deposit_usd))}
+                    </span>
+                  </div>
                 </div>
                 <div className="col-span-2 text-right">{fmtUsd(m.start_value_usd)}</div>
                 <div className="col-span-2 text-right">{fmtUsd(m.deposit_usd)}</div>
@@ -341,8 +360,19 @@ export default function CryptoOverview() {
                   placeholder="0"
                 />
                 <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-                  {t('ov.depositHint')}
+                  {t('ov.depositAutoHint')}
                 </div>
+              </div>
+            </div>
+            <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs dark:bg-neutral-800/40">
+              <span className="text-neutral-500 dark:text-neutral-400">
+                {t('ov.investedSum')}:{' '}
+              </span>
+              <span className="font-semibold">
+                {fmtUsd(parseNum(aStart) + parseNum(aDeposit))}
+              </span>
+              <div className="mt-0.5 text-neutral-400 dark:text-neutral-500">
+                {t('ov.investedHint')}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
