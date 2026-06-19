@@ -79,14 +79,25 @@ export default function CryptoOverview() {
     void reload()
   }, [reload])
 
-  // Подставляем текущую стоимость портфеля как «стоимость на конец»,
-  // если поле ещё пустое (можно изменить вручную).
+  // При выборе месяца/года подставляем уже сохранённые значения этого месяца,
+  // чтобы правка была безопасной: «пополнение по частям» обновляет общий итог,
+  // а не затирает его вслепую. Если записи за месяц ещё нет — в «стоимость на
+  // конец» подставляем текущую стоимость портфеля (можно изменить вручную).
   useEffect(() => {
-    if (!snapshot) return
-    const v = snapshot.spotValue
-    if (v == null || Number.isNaN(v)) return
-    setAEnd((prev) => (prev === '' ? String(Math.round(v * 100) / 100) : prev))
-  }, [snapshot])
+    const existing = monthly.find(
+      (m) => m.year === Number(aYear) && m.month === aMonth + 1,
+    )
+    if (existing) {
+      setADeposit(String(existing.deposit_usd))
+      setAEnd(String(existing.end_value_usd))
+      setANote(existing.note ?? '')
+      return
+    }
+    setADeposit('')
+    setANote('')
+    const v = snapshot?.spotValue
+    setAEnd(v != null && !Number.isNaN(v) ? String(Math.round(v * 100) / 100) : '')
+  }, [aMonth, aYear, monthly, snapshot])
 
   async function handleSave() {
     if (!user) return
