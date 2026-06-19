@@ -567,27 +567,35 @@ export async function deleteMonthly(id: string): Promise<void> {
   if (error) throw error
 }
 
-// Сумма покупок (в USD) по месяцам — для авто-подстановки «Депозита за месяц» в сводке.
-// Когда ты покупаешь монету, ты вкладываешь свои деньги, поэтому сумма покупок за месяц = депозит за месяц.
-// Ключ: `${year}-${month}` (month 1..12). Продажи здесь не учитываются (их можно поправить вручную).
-export async function loadBuysByMonth(
+// Чистый депозит своих денег по месяцам — для авто-подстановки «Депозита за месяц» в сводке.
+// Депозит = покупки минус продажи за месяц (в USD). Так корректно работает «ротация»:
+// продал одну монету и на эти же деньги купил другую — новых денег ты не вносил, поэтому
+// продажа гасит покупку и депозит за месяц не раздувается. Если за месяц продал больше,
+// чем купил (вывел деньги), значение получится отрицательным — это нормально.
+// Ключ: `${year}-${month}` (month 1..12). Значение всегда можно поправить вручную.
+export async function loadNetDepositByMonth(
   userId: string,
 ): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('crypto_transactions')
-    .select('amount_usd, date')
+    .select('amount_usd, date, type')
     .eq('user_id', userId)
-    .eq('type', 'buy')
   if (error) return {}
   const out: Record<string, number> = {}
-  for (const row of (data ?? []) as { amount_usd: number; date: string }[]) {
+  for (const row of (data ?? []) as {
+    amount_usd: number
+    date: string
+    type: TxType
+  }[]) {
     const d = row.date
     if (!d || d.length < 7) continue
     const year = Number(d.slice(0, 4))
     const month = Number(d.slice(5, 7))
     if (!year || !month) continue
     const key = year + '-' + month
-    out[key] = round2((out[key] ?? 0) + Number(row.amount_usd))
+    const signed =
+      row.type === 'buy' ? Number(row.amount_usd) : -Number(row.amount_usd)
+    out[key] = round2((out[key] ?? 0) + signed)
   }
   return out
 }

@@ -4,10 +4,11 @@ import { useLang } from '../lib/i18n'
 import { monthName } from '../lib/db'
 import IconButton from './IconButton'
 import ConfirmDialog from './ConfirmDialog'
+import Select from './Select'
 import {
   loadCryptoSnapshotLive,
   loadMonthly,
-  loadBuysByMonth,
+  loadNetDepositByMonth,
   upsertMonthly,
   deleteMonthly,
   fmtUsd,
@@ -62,7 +63,7 @@ export default function CryptoOverview() {
       const [snap, months, buysMap] = await Promise.all([
         loadCryptoSnapshotLive(user.id),
         loadMonthly(user.id),
-        loadBuysByMonth(user.id),
+        loadNetDepositByMonth(user.id),
       ])
       setSnapshot(snap)
       setMonthly(months)
@@ -100,8 +101,8 @@ export default function CryptoOverview() {
       return
     }
     setANote('')
-    // «Депозит за месяц» подставляем суммой покупок монет за этот месяц:
-    // покупая монету, ты вкладываешь свои деньги. Значение можно изменить вручную.
+    // «Депозит за месяц» подставляем чистым депозитом за месяц (покупки минус продажи):
+    // ротация (продал одну монету и купил другую) не считается новыми деньгами. Можно изменить вручную.
     const buyKey = Number(aYear) + '-' + (aMonth + 1)
     setADeposit(buys[buyKey] ? String(buys[buyKey]) : '')
     // Стоимость на начало подставляем с конца предыдущего месяца (если он есть).
@@ -212,50 +213,67 @@ export default function CryptoOverview() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <div className={labelCls}>{t('ov.spotInvested')}</div>
-              <div className="text-base font-semibold">
-                {fmtUsd(snapshot.spotInvested)}
+          <div className="space-y-3">
+            {/* Спот */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <div className={labelCls}>{t('ov.spotInvested')}</div>
+                <div className="text-base font-semibold">
+                  {fmtUsd(snapshot.spotInvested)}
+                </div>
+              </div>
+              <div>
+                <div className={labelCls}>{t('ov.spotValue')}</div>
+                <div className="text-base font-semibold">
+                  {fmtUsd(snapshot.spotValue)}
+                </div>
+              </div>
+              <div>
+                <div className={labelCls}>{t('ov.spotPnl')}</div>
+                <div className={'text-base font-semibold ' + pnlColor(snapshot.spotPnl)}>
+                  {fmtUsd(snapshot.spotPnl)}
+                </div>
               </div>
             </div>
-            <div>
-              <div className={labelCls}>{t('ov.spotValue')}</div>
-              <div className="text-base font-semibold">
-                {fmtUsd(snapshot.spotValue)}
+
+            {/* Линия между спотом и фьючерсами */}
+            <div className="border-t border-neutral-200 dark:border-neutral-800" />
+
+            {/* Фьючерсы */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <div className={labelCls}>{t('ov.futuresMargin')}</div>
+                <div className="text-base font-semibold">
+                  {fmtUsd(snapshot.futuresMargin)}
+                </div>
+              </div>
+              <div>
+                <div className={labelCls}>{t('ov.futuresPnl')}</div>
+                <div
+                  className={'text-base font-semibold ' + pnlColor(snapshot.futuresClosedPnl)}
+                >
+                  {fmtUsd(snapshot.futuresClosedPnl)}
+                </div>
+              </div>
+              <div>
+                <div className={labelCls}>{t('ov.openPositions')}</div>
+                <div className="text-base font-semibold">
+                  {t('ov.openSpot', { n: snapshot.openSpotCount })}
+                  {' · '}
+                  {t('ov.openFutures', { n: snapshot.openFuturesCount })}
+                </div>
               </div>
             </div>
-            <div>
-              <div className={labelCls}>{t('ov.spotPnl')}</div>
-              <div className={'text-base font-semibold ' + pnlColor(snapshot.spotPnl)}>
-                {fmtUsd(snapshot.spotPnl)}
+
+            {/* Линия перед итогом по деньгам */}
+            <div className="border-t border-neutral-200 dark:border-neutral-800" />
+
+            {/* Всего внесено своих денег */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <div className={labelCls}>{t('ov.netDeposited')}</div>
+                <div className="text-base font-semibold">{fmtUsd(netDeposited)}</div>
               </div>
-            </div>
-            <div>
-              <div className={labelCls}>{t('ov.futuresMargin')}</div>
-              <div className="text-base font-semibold">
-                {fmtUsd(snapshot.futuresMargin)}
-              </div>
-            </div>
-            <div>
-              <div className={labelCls}>{t('ov.futuresPnl')}</div>
-              <div
-                className={'text-base font-semibold ' + pnlColor(snapshot.futuresClosedPnl)}
-              >
-                {fmtUsd(snapshot.futuresClosedPnl)}
-              </div>
-            </div>
-            <div>
-              <div className={labelCls}>{t('ov.openPositions')}</div>
-              <div className="text-base font-semibold">
-                {t('ov.openSpot', { n: snapshot.openSpotCount })}
-                {' · '}
-                {t('ov.openFutures', { n: snapshot.openFuturesCount })}
-              </div>
-            </div>
-            <div>
-              <div className={labelCls}>{t('ov.netDeposited')}</div>
-              <div className="text-base font-semibold">{fmtUsd(netDeposited)}</div>
             </div>
           </div>
         </div>
@@ -314,17 +332,14 @@ export default function CryptoOverview() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>{t('ov.month')}</label>
-                <select
-                  className={inputCls}
+                <Select
                   value={aMonth}
-                  onChange={(e) => setAMonth(Number(e.target.value))}
-                >
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i} value={i}>
-                      {monthName(i)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setAMonth(Number(v))}
+                  options={Array.from({ length: 12 }, (_, i) => ({
+                    value: i,
+                    label: monthName(i),
+                  }))}
+                />
               </div>
               <div>
                 <label className={labelCls}>{t('ov.year')}</label>

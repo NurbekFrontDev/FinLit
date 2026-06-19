@@ -56,6 +56,8 @@ export default function CryptoPortfolio({ portfolio }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Фильтр списка активов: все / только открытые / только закрытые.
+  const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all')
 
   // Форма добавления актива.
   const [aSymbol, setASymbol] = useState('')
@@ -304,6 +306,9 @@ export default function CryptoPortfolio({ portfolio }: Props) {
     (s, a) => s + (a.marketValue ?? a.invested ?? 0),
     0,
   )
+  const visible = assets.filter((a) =>
+    filter === 'all' ? true : a.status === filter,
+  )
 
   return (
     <div className="space-y-4">
@@ -409,6 +414,38 @@ export default function CryptoPortfolio({ portfolio }: Props) {
         </div>
       </div>
 
+      {/* Линия и фильтр перед списком активов */}
+      {assets.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center gap-3">
+            <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              {t('inv.assetsList')}
+            </div>
+            <div className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+          </div>
+          <div className="inline-flex rounded-lg border border-neutral-300 p-0.5 dark:border-neutral-700">
+            {(['all', 'open', 'closed'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={`rounded-md px-3 py-1 text-sm transition ${
+                  filter === f
+                    ? 'bg-emerald-500 text-neutral-950'
+                    : 'text-neutral-500 dark:text-neutral-400'
+                }`}
+              >
+                {f === 'all'
+                  ? t('inv.fAll')
+                  : f === 'open'
+                    ? t('inv.fOpen')
+                    : t('inv.fClosed')}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
           {t('common.loading')}
@@ -417,9 +454,13 @@ export default function CryptoPortfolio({ portfolio }: Props) {
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/50 dark:text-neutral-400">
           {t('inv.empty')}
         </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/50 dark:text-neutral-400">
+          {t('inv.nothingFound')}
+        </div>
       ) : (
         <div className="space-y-2">
-          {assets.map((a) => {
+          {visible.map((a) => {
             const expanded = expandedId === a.id
             const isClosed = a.status === 'closed'
             return (
