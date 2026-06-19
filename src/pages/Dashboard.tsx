@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -57,6 +57,8 @@ export default function Dashboard() {
   const [cushion, setCushion] = useState<CushionStats | null>(null)
   const [pots, setPots] = useState<SavingsPotsStats>({ cushion: 0, free: 0, charity: 0, total: 0 })
   const [cryptoSnap, setCryptoSnap] = useState<CryptoSnapshot | null>(null)
+  const [cryptoLoading, setCryptoLoading] = useState(false)
+  const [cryptoPricedAt, setCryptoPricedAt] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -204,21 +206,28 @@ export default function Dashboard() {
     }
   }, [user])
 
-  useEffect(() => {
+  const reloadCrypto = useCallback(async () => {
     if (!user) return
-    let active = true
-    ;(async () => {
-      try {
-        const snap = await loadCryptoSnapshotLive(user.id)
-        if (active) setCryptoSnap(snap)
-      } catch {
-        if (active) setCryptoSnap(null)
-      }
-    })()
-    return () => {
-      active = false
+    setCryptoLoading(true)
+    try {
+      const snap = await loadCryptoSnapshotLive(user.id)
+      setCryptoSnap(snap)
+      setCryptoPricedAt(
+        new Date().toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      )
+    } catch {
+      setCryptoSnap(null)
+    } finally {
+      setCryptoLoading(false)
     }
   }, [user])
+
+  useEffect(() => {
+    void reloadCrypto()
+  }, [reloadCrypto])
 
   // «Уже отложено» теперь берём из реального баланса копилок (loadSavingsPots).
 
@@ -317,29 +326,52 @@ export default function Dashboard() {
               cryptoSnap.futuresMargin > 0 ||
               cryptoSnap.openSpotCount > 0 ||
               cryptoSnap.openFuturesCount > 0) && (
-              <button
-                type="button"
-                onClick={() => navigate('/investments')}
-                className="flex flex-col gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-left transition hover:bg-amber-500/10 dark:border-amber-500/20"
-              >
-                <p className="flex items-center gap-1 text-xs font-medium leading-tight">
-                  <span className="min-w-0 truncate">{t('dash.crypto')}</span>
-                  <span className="shrink-0 text-amber-500" aria-hidden>›</span>
-                </p>
-                <div className="flex flex-wrap gap-x-6 gap-y-1">
-                  <span className="text-sm">
-                    <span className="text-neutral-500 dark:text-neutral-400">{t('dash.cryptoInvested')}: </span>
-                    <span className="font-semibold">{fmtUsd(cryptoSnap.spotInvested)}</span>
-                  </span>
-                  <span className="text-sm">
-                    <span className="text-neutral-500 dark:text-neutral-400">{t('dash.cryptoFutures')}: </span>
-                    <span className="font-semibold">{fmtUsd(cryptoSnap.futuresMargin)}</span>
-                  </span>
+              <div className="flex flex-col gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 dark:border-amber-500/20">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/investments')}
+                    className="flex min-w-0 items-center gap-1 text-left text-xs font-medium leading-tight transition hover:opacity-80"
+                  >
+                    <span className="min-w-0 truncate">{t('dash.crypto')}</span>
+                    <span className="shrink-0 text-amber-500" aria-hidden>›</span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {cryptoPricedAt && (
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                        {t('inv.pricedAt', { t: cryptoPricedAt })}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void reloadCrypto()}
+                      disabled={cryptoLoading}
+                      className="rounded-lg border border-neutral-300 px-2.5 py-1 text-xs transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    >
+                      {t('inv.refreshPrices')}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('dash.cryptoOpen', { s: cryptoSnap.openSpotCount, f: cryptoSnap.openFuturesCount })}
-                </p>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/investments')}
+                  className="flex flex-col gap-2 text-left"
+                >
+                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                    <span className="text-sm">
+                      <span className="text-neutral-500 dark:text-neutral-400">{t('dash.cryptoInvested')}: </span>
+                      <span className="font-semibold">{fmtUsd(cryptoSnap.spotInvested)}</span>
+                    </span>
+                    <span className="text-sm">
+                      <span className="text-neutral-500 dark:text-neutral-400">{t('dash.cryptoFutures')}: </span>
+                      <span className="font-semibold">{fmtUsd(cryptoSnap.futuresMargin)}</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {t('dash.cryptoOpen', { s: cryptoSnap.openSpotCount, f: cryptoSnap.openFuturesCount })}
+                  </p>
+                </button>
+              </div>
             )}
 
           <div className="flex flex-col gap-3">
