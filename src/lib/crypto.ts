@@ -498,6 +498,7 @@ export type CryptoMonthly = {
   user_id: string
   year: number
   month: number
+  start_value_usd: number
   deposit_usd: number
   end_value_usd: number
   note: string | null
@@ -511,9 +512,11 @@ export type MonthlyStats = CryptoMonthly & {
 }
 
 export function computeMonthlyStats(m: CryptoMonthly): MonthlyStats {
-  const pnl = round2(Number(m.end_value_usd) - Number(m.deposit_usd))
-  const pnlPct =
-    Number(m.deposit_usd) > 0 ? (pnl / Number(m.deposit_usd)) * 100 : null
+  // Базис месяца = стоимость на начало + пополнение за месяц.
+  // Прибыль/убыток = стоимость на конец - базис (без искажения от старых вложений).
+  const base = Number(m.start_value_usd) + Number(m.deposit_usd)
+  const pnl = round2(Number(m.end_value_usd) - base)
+  const pnlPct = base > 0 ? (pnl / base) * 100 : null
   return { ...m, pnl, pnlPct }
 }
 
@@ -533,6 +536,7 @@ export async function upsertMonthly(
   input: {
     year: number
     month: number
+    start_value_usd: number
     deposit_usd: number
     end_value_usd: number
     note?: string | null
@@ -545,6 +549,7 @@ export async function upsertMonthly(
         user_id: userId,
         year: input.year,
         month: input.month,
+        start_value_usd: input.start_value_usd,
         deposit_usd: input.deposit_usd,
         end_value_usd: input.end_value_usd,
         note: input.note?.trim() || null,

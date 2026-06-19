@@ -40,6 +40,7 @@ export default function CryptoOverview() {
   // Форма добавления месяца
   const [aYear, setAYear] = useState(String(now.getFullYear()))
   const [aMonth, setAMonth] = useState(now.getMonth()) // 0..11
+  const [aStart, setAStart] = useState('')
   const [aDeposit, setADeposit] = useState('')
   const [aEnd, setAEnd] = useState('')
   const [aNote, setANote] = useState('')
@@ -88,6 +89,7 @@ export default function CryptoOverview() {
       (m) => m.year === Number(aYear) && m.month === aMonth + 1,
     )
     if (existing) {
+      setAStart(String(existing.start_value_usd))
       setADeposit(String(existing.deposit_usd))
       setAEnd(String(existing.end_value_usd))
       setANote(existing.note ?? '')
@@ -95,16 +97,24 @@ export default function CryptoOverview() {
     }
     setADeposit('')
     setANote('')
+    // Стоимость на начало подставляем с конца предыдущего месяца (если он есть).
+    const selKey = Number(aYear) * 12 + aMonth
+    const prev = monthly
+      .map((m) => ({ m, key: m.year * 12 + (m.month - 1) }))
+      .filter((x) => x.key < selKey)
+      .sort((a, b) => b.key - a.key)[0]
+    setAStart(prev ? String(prev.m.end_value_usd) : '')
     const v = snapshot?.spotValue
     setAEnd(v != null && !Number.isNaN(v) ? String(Math.round(v * 100) / 100) : '')
   }, [aMonth, aYear, monthly, snapshot])
 
   async function handleSave() {
     if (!user) return
+    const start = parseNum(aStart)
     const deposit = parseNum(aDeposit)
     const end = parseNum(aEnd)
     const year = Number(aYear)
-    if (end <= 0 || deposit < 0 || !year) {
+    if (end <= 0 || deposit < 0 || start < 0 || !year) {
       setErrValue(true)
       return
     }
@@ -115,10 +125,12 @@ export default function CryptoOverview() {
       await upsertMonthly(user.id, {
         year,
         month: aMonth + 1,
+        start_value_usd: start,
         deposit_usd: deposit,
         end_value_usd: end,
         note: aNote || null,
       })
+      setAStart('')
       setADeposit('')
       setAEnd('')
       setANote('')
@@ -245,8 +257,9 @@ export default function CryptoOverview() {
         ) : (
           <div className="space-y-2">
             <div className="grid grid-cols-12 gap-2 px-1 text-xs text-neutral-500 dark:text-neutral-400">
-              <div className="col-span-4">{t('ov.month')}</div>
-              <div className="col-span-3 text-right">{t('ov.depositCol')}</div>
+              <div className="col-span-3">{t('ov.month')}</div>
+              <div className="col-span-2 text-right">{t('ov.startCol')}</div>
+              <div className="col-span-2 text-right">{t('ov.depositCol')}</div>
               <div className="col-span-2 text-right">{t('ov.endCol')}</div>
               <div className="col-span-3 text-right">{t('ov.pnlCol')}</div>
             </div>
@@ -255,7 +268,7 @@ export default function CryptoOverview() {
                 key={m.id}
                 className="grid grid-cols-12 items-center gap-2 rounded-xl border border-neutral-200 px-2 py-2 text-sm dark:border-neutral-800"
               >
-                <div className="col-span-4 flex items-center gap-1">
+                <div className="col-span-3 flex items-center gap-1">
                   <IconButton
                     icon="delete"
                     onClick={() => setToDelete(m)}
@@ -263,7 +276,8 @@ export default function CryptoOverview() {
                   />
                   <span className="truncate">{monthLabel(m)}</span>
                 </div>
-                <div className="col-span-3 text-right">{fmtUsd(m.deposit_usd)}</div>
+                <div className="col-span-2 text-right">{fmtUsd(m.start_value_usd)}</div>
+                <div className="col-span-2 text-right">{fmtUsd(m.deposit_usd)}</div>
                 <div className="col-span-2 text-right">{fmtUsd(m.end_value_usd)}</div>
                 <div className={'col-span-3 text-right font-medium ' + pnlColor(m.pnl)}>
                   {fmtUsd(m.pnl)}
@@ -305,6 +319,19 @@ export default function CryptoOverview() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
+                <label className={labelCls}>{t('ov.startValue')}</label>
+                <input
+                  className={inputCls}
+                  inputMode="decimal"
+                  value={aStart}
+                  onChange={(e) => setAStart(e.target.value)}
+                  placeholder="0"
+                />
+                <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {t('ov.startHint')}
+                </div>
+              </div>
+              <div>
                 <label className={labelCls}>{t('ov.deposit')}</label>
                 <input
                   className={inputCls}
@@ -317,6 +344,8 @@ export default function CryptoOverview() {
                   {t('ov.depositHint')}
                 </div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>{t('ov.endValue')}</label>
                 <input
@@ -328,6 +357,20 @@ export default function CryptoOverview() {
                 />
                 <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
                   {t('ov.endHint')}
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>{t('ov.resultPreview')}</label>
+                <div
+                  className={
+                    'rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium dark:border-neutral-800 ' +
+                    pnlColor(parseNum(aEnd) - parseNum(aStart) - parseNum(aDeposit))
+                  }
+                >
+                  {fmtUsd(parseNum(aEnd) - parseNum(aStart) - parseNum(aDeposit))}
+                </div>
+                <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {t('ov.resultHint')}
                 </div>
               </div>
             </div>
