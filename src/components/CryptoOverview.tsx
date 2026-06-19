@@ -22,6 +22,8 @@ const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 const btnPrimary =
   'rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-50'
+const btnGhost =
+  'rounded-lg border border-neutral-300 px-3 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
 const labelCls = 'mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400'
 
 const now = new Date()
@@ -46,6 +48,9 @@ export default function CryptoOverview() {
 
   const [toDelete, setToDelete] = useState<MonthlyStats | null>(null)
 
+  // Время последнего обновления живых цен (для индикатора «Цены обновлены: HH:MM»).
+  const [pricedAt, setPricedAt] = useState<string | null>(null)
+
   const reload = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -57,6 +62,12 @@ export default function CryptoOverview() {
       ])
       setSnapshot(snap)
       setMonthly(months)
+      setPricedAt(
+        new Date().toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -141,7 +152,24 @@ export default function CryptoOverview() {
       {/* Снимок */}
       {snapshot && (
         <div className={cardCls}>
-          <div className="mb-3 text-sm font-medium">{t('ov.snapshot')}</div>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">{t('ov.snapshot')}</span>
+            <div className="flex items-center gap-2">
+              {pricedAt && (
+                <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                  {t('inv.pricedAt', { t: pricedAt })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => void reload()}
+                disabled={loading}
+                className={btnGhost}
+              >
+                {t('inv.refreshPrices')}
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
               <div className={labelCls}>{t('ov.spotInvested')}</div>
