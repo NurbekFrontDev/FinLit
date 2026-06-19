@@ -288,37 +288,37 @@ export default function CryptoOverview() {
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="grid grid-cols-12 gap-2 px-1 text-xs text-neutral-500 dark:text-neutral-400">
-              <div className="col-span-3">{t('ov.month')}</div>
-              <div className="col-span-2 text-right">{t('ov.startCol')}</div>
-              <div className="col-span-2 text-right">{t('ov.depositCol')}</div>
-              <div className="col-span-2 text-right">{t('ov.endCol')}</div>
-              <div className="col-span-3 text-right">{t('ov.pnlCol')}</div>
+            <div className="flex items-center gap-1 px-2 text-xs text-neutral-500 dark:text-neutral-400">
+              <span className="h-8 w-8 shrink-0" />
+              <div className="grid flex-1 grid-cols-12 gap-2">
+                <div className="col-span-4">{t('ov.month')}</div>
+                <div className="col-span-2 text-right">{t('ov.startCol')}</div>
+                <div className="col-span-2 text-right">{t('ov.depositCol')}</div>
+                <div className="col-span-2 text-right">{t('ov.endCol')}</div>
+                <div className="col-span-2 text-right">{t('ov.pnlCol')}</div>
+              </div>
             </div>
             {monthly.map((m) => (
               <div
                 key={m.id}
-                className="grid grid-cols-12 items-center gap-2 rounded-xl border border-neutral-200 px-2 py-2 text-sm dark:border-neutral-800"
+                className="flex items-center gap-1 rounded-xl border border-neutral-200 px-2 py-2 text-sm dark:border-neutral-800"
               >
-                <div className="col-span-3 flex items-center gap-1">
-                  <IconButton
-                    icon="delete"
-                    onClick={() => setToDelete(m)}
-                    title={t('common.delete')}
-                  />
-                  <div className="min-w-0 leading-tight">
-                    <span className="block truncate">{monthLabel(m)}</span>
-                    <span className="block truncate text-xs text-neutral-400 dark:text-neutral-500">
-                      {t('ov.investedCol')}: {fmtUsd(Number(m.start_value_usd) + Number(m.deposit_usd))}
-                    </span>
+                <IconButton
+                  icon="delete"
+                  onClick={() => setToDelete(m)}
+                  title={t('common.delete')}
+                />
+                <div className="grid flex-1 grid-cols-12 items-center gap-2">
+                  <span className="col-span-4 min-w-0 truncate font-medium">
+                    {monthLabel(m)}
+                  </span>
+                  <div className="col-span-2 text-right">{fmtUsd(m.start_value_usd)}</div>
+                  <div className="col-span-2 text-right">{fmtUsd(m.deposit_usd)}</div>
+                  <div className="col-span-2 text-right">{fmtUsd(m.end_value_usd)}</div>
+                  <div className={'col-span-2 text-right font-medium ' + pnlColor(m.pnl)}>
+                    {fmtUsd(m.pnl)}
+                    <span className="block text-xs">{fmtPct(m.pnlPct)}</span>
                   </div>
-                </div>
-                <div className="col-span-2 text-right">{fmtUsd(m.start_value_usd)}</div>
-                <div className="col-span-2 text-right">{fmtUsd(m.deposit_usd)}</div>
-                <div className="col-span-2 text-right">{fmtUsd(m.end_value_usd)}</div>
-                <div className={'col-span-3 text-right font-medium ' + pnlColor(m.pnl)}>
-                  {fmtUsd(m.pnl)}
-                  <span className="block text-xs">{fmtPct(m.pnlPct)}</span>
                 </div>
               </div>
             ))}
