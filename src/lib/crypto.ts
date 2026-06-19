@@ -69,6 +69,22 @@ export function fmtUsd(n: number | null | undefined): string {
   )
 }
 
+// Цена за одну монету. Для очень дешёвых токенов (мемкоины) показываем больше
+// знаков после запятой, иначе округление до 2 знаков превращает цену в ноль.
+export function fmtPrice(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '–'
+  const abs = Math.abs(n)
+  if (abs === 0 || abs >= 1) return fmtUsd(n)
+  const leadingZeros = Math.floor(-Math.log10(abs))
+  const digits = Math.min(12, leadingZeros + 3)
+  const body = abs.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: digits,
+  })
+  const sign = n < 0 ? '-' : ''
+  return sign + fmtUsd(0).replace('0.00', body)
+}
+
 export function fmtQty(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '–'
   return n.toLocaleString('en-US', { maximumFractionDigits: 8 })

@@ -15,6 +15,7 @@ import {
   reopenAsset,
   deleteAsset,
   fmtUsd,
+  fmtPrice,
   fmtQty,
   fmtPct,
   parseNum,
@@ -242,11 +243,16 @@ export default function CryptoPortfolio({ portfolio }: Props) {
   }
 
   async function handleClose(assetId: string) {
-    const price = parseNum(cPrice)
-    if (price <= 0) {
+    // Пользователь вводит ОБЩУЮ сумму, которую получает за всю позицию.
+    // Цену за одну монету считаем сами: total / количество в наличии.
+    const total = parseNum(cPrice)
+    const asset = assets.find((x) => x.id === assetId)
+    const qty = asset?.quantity ?? 0
+    if (total <= 0 || qty <= 0) {
       setError(t('inv.errQtyPrice'))
       return
     }
+    const price = total / qty
     try {
       await closeAsset(assetId, cDate || todayISO(), price)
       setClosingId(null)
@@ -339,6 +345,70 @@ export default function CryptoPortfolio({ portfolio }: Props) {
         </div>
       )}
 
+      {/* Форма добавления актива — выше списка монет, чтобы новые монеты добавлялись ниже. */}
+      <div className={cardCls}>
+        <div className="mb-3 text-sm font-medium">{t('inv.addAsset')}</div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>{t('inv.symbol')}</label>
+            <input
+              className={inputCls}
+              value={aSymbol}
+              onChange={(e) => setASymbol(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>{t('inv.name')}</label>
+            <input
+              className={inputCls}
+              value={aName}
+              onChange={(e) => setAName(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>{t('inv.contract')}</label>
+            <input
+              className={inputCls}
+              value={aContract}
+              onChange={(e) => setAContract(e.target.value)}
+              placeholder={t('inv.contractPh')}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>{t('inv.qty')}</label>
+            <input
+              className={inputCls}
+              inputMode="decimal"
+              value={aQty}
+              onChange={(e) => setAQty(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>{t('inv.price')}</label>
+            <input
+              className={inputCls}
+              inputMode="decimal"
+              value={aPrice}
+              onChange={(e) => setAPrice(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>{t('inv.openDate')}</label>
+            <DatePicker value={aDate} onChange={setADate} />
+          </div>
+        </div>
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={adding}
+            onClick={handleAddAsset}
+            className={btnPrimary}
+          >
+            {t('inv.create')}
+          </button>
+        </div>
+      </div>
+
       {loading ? (
         <div className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
           {t('common.loading')}
@@ -382,13 +452,32 @@ export default function CryptoPortfolio({ portfolio }: Props) {
                       {t('inv.held')}: {fmtQty(a.quantity)}
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="font-semibold">{fmtUsd(a.marketValue)}</div>
-                    <div className={`text-xs ${pnlColor(a.pnl)}`}>
-                      {a.pnl == null
-                        ? '–'
-                        : `${fmtUsd(a.pnl)} (${fmtPct(a.pnlPct)})`}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="text-right">
+                      <div className="font-semibold">{fmtUsd(a.marketValue)}</div>
+                      <div className={`text-xs ${pnlColor(a.pnl)}`}>
+                        {a.pnl == null
+                          ? '–'
+                          : `${fmtUsd(a.pnl)} (${fmtPct(a.pnlPct)})`}
+                      </div>
                     </div>
+                    {/* Серая стрелка: показывает, что карточка раскрывается. */}
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform ${
+                        expanded ? 'rotate-180' : ''
+                      }`}
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M5 7.5 10 12.5 15 7.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </div>
                 </button>
 
@@ -396,7 +485,7 @@ export default function CryptoPortfolio({ portfolio }: Props) {
                   <div className="mt-4 space-y-4 border-t border-neutral-200 pt-4 dark:border-neutral-800">
                     {/* Показатели */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-                      <Stat label={t('inv.avgPrice')} value={fmtUsd(a.avgBuyPrice)} />
+                      <Stat label={t('inv.avgPrice')} value={fmtPrice(a.avgBuyPrice)} />
                       <Stat label={t('inv.invested')} value={fmtUsd(a.invested)} />
                       <Stat label={t('inv.value')} value={fmtUsd(a.marketValue)} />
                       <Stat
@@ -498,24 +587,31 @@ export default function CryptoPortfolio({ portfolio }: Props) {
                           {a.txs.map((tx) => (
                             <li
                               key={tx.id}
-                              className="flex items-center justify-between gap-2 rounded-lg bg-neutral-50 px-3 py-1.5 text-xs dark:bg-neutral-950/40"
+                              className="flex items-start justify-between gap-2 rounded-lg bg-neutral-50 px-3 py-1.5 text-xs dark:bg-neutral-950/40"
                             >
-                              <span className="min-w-0 truncate">
-                                <span className="text-neutral-400">
-                                  {formatDateHuman(tx.date)}
-                                </span>{' '}
-                                <span
-                                  className={
-                                    tx.type === 'buy'
-                                      ? 'text-emerald-600 dark:text-emerald-400'
-                                      : 'text-red-500 dark:text-red-400'
-                                  }
-                                >
-                                  {tx.type === 'buy' ? t('inv.buy') : t('inv.sell')}
-                                </span>{' '}
-                                {fmtQty(tx.quantity)} @ {fmtUsd(tx.price_usd)} ={' '}
-                                {fmtUsd(tx.amount_usd)}
-                              </span>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                  <span className="text-neutral-400">
+                                    {formatDateHuman(tx.date)}
+                                  </span>
+                                  <span
+                                    className={
+                                      tx.type === 'buy'
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : 'text-red-500 dark:text-red-400'
+                                    }
+                                  >
+                                    {tx.type === 'buy' ? t('inv.buy') : t('inv.sell')}
+                                  </span>
+                                  <span className="font-medium">
+                                    {fmtUsd(tx.amount_usd)}
+                                  </span>
+                                </div>
+                                <div className="mt-0.5 text-neutral-400 dark:text-neutral-500">
+                                  {fmtQty(tx.quantity)} · {fmtPrice(tx.price_usd)}{' '}
+                                  {t('inv.perCoin')}
+                                </div>
+                              </div>
                               <IconButton
                                 icon="delete"
                                 title={t('inv.deleteTrade')}
@@ -541,7 +637,7 @@ export default function CryptoPortfolio({ portfolio }: Props) {
                         <div className="w-full rounded-xl bg-neutral-50 p-3 dark:bg-neutral-950/40">
                           <div className="grid gap-2 sm:grid-cols-2">
                             <div>
-                              <label className={labelCls}>{t('inv.closePrice')}</label>
+                              <label className={labelCls}>{t('inv.closeAmount')}</label>
                               <input
                                 className={inputCls}
                                 inputMode="decimal"
@@ -553,6 +649,9 @@ export default function CryptoPortfolio({ portfolio }: Props) {
                               <label className={labelCls}>{t('inv.closeDate')}</label>
                               <DatePicker value={cDate} onChange={setCDate} />
                             </div>
+                          </div>
+                          <div className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
+                            {t('inv.closeHint')}
                           </div>
                           <div className="mt-2 flex gap-2">
                             <button
@@ -599,70 +698,6 @@ export default function CryptoPortfolio({ portfolio }: Props) {
           })}
         </div>
       )}
-
-      {/* Форма добавления актива */}
-      <div className={cardCls}>
-        <div className="mb-3 text-sm font-medium">{t('inv.addAsset')}</div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div>
-            <label className={labelCls}>{t('inv.symbol')}</label>
-            <input
-              className={inputCls}
-              value={aSymbol}
-              onChange={(e) => setASymbol(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{t('inv.name')}</label>
-            <input
-              className={inputCls}
-              value={aName}
-              onChange={(e) => setAName(e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className={labelCls}>{t('inv.contract')}</label>
-            <input
-              className={inputCls}
-              value={aContract}
-              onChange={(e) => setAContract(e.target.value)}
-              placeholder={t('inv.contractPh')}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{t('inv.qty')}</label>
-            <input
-              className={inputCls}
-              inputMode="decimal"
-              value={aQty}
-              onChange={(e) => setAQty(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{t('inv.price')}</label>
-            <input
-              className={inputCls}
-              inputMode="decimal"
-              value={aPrice}
-              onChange={(e) => setAPrice(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{t('inv.openDate')}</label>
-            <DatePicker value={aDate} onChange={setADate} />
-          </div>
-        </div>
-        <div className="mt-3">
-          <button
-            type="button"
-            disabled={adding}
-            onClick={handleAddAsset}
-            className={btnPrimary}
-          >
-            {t('inv.create')}
-          </button>
-        </div>
-      </div>
 
       <ConfirmDialog
         open={assetToDelete != null}

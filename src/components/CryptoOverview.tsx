@@ -79,6 +79,15 @@ export default function CryptoOverview() {
     void reload()
   }, [reload])
 
+  // Подставляем текущую стоимость портфеля как «стоимость на конец»,
+  // если поле ещё пустое (можно изменить вручную).
+  useEffect(() => {
+    if (!snapshot) return
+    const v = snapshot.spotValue
+    if (v == null || Number.isNaN(v)) return
+    setAEnd((prev) => (prev === '' ? String(Math.round(v * 100) / 100) : prev))
+  }, [snapshot])
+
   async function handleSave() {
     if (!user) return
     const deposit = parseNum(aDeposit)
@@ -293,6 +302,9 @@ export default function CryptoOverview() {
                   onChange={(e) => setADeposit(e.target.value)}
                   placeholder="0"
                 />
+                <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {t('ov.depositHint')}
+                </div>
               </div>
               <div>
                 <label className={labelCls}>{t('ov.endValue')}</label>
@@ -303,6 +315,9 @@ export default function CryptoOverview() {
                   onChange={(e) => setAEnd(e.target.value)}
                   placeholder="0"
                 />
+                <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                  {t('ov.endHint')}
+                </div>
               </div>
             </div>
             <div>
