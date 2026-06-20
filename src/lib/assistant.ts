@@ -367,6 +367,53 @@ export async function clearAiMessages(userId: string): Promise<void> {
   if (error) throw error
 }
 
+// ===== Профиль ассистента: Soul / User / Memory (ИИ-9) =====
+// Пользователь может смотреть и править «душу», заметки о себе и память прямо из
+// чата, не залезая в код. Храним три markdown-документа в app_settings (одна строка
+// на пользователя, синхронизация между устройствами).
+//  - ai_soul: переопределение личности (SOUL). Пусто = берём встроенный SOUL.
+//  - ai_user_md: что ассистенту полезно знать о пользователе.
+//  - ai_memory_md: важные факты, которые стоит помнить.
+export type AiProfile = { soul: string; userMd: string; memoryMd: string }
+
+export async function loadAiProfile(userId: string): Promise<AiProfile> {
+  const empty: AiProfile = { soul: '', userMd: '', memoryMd: '' }
+  try {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('ai_soul, ai_user_md, ai_memory_md')
+      .eq('user_id', userId)
+      .maybeSingle()
+    const d = data as
+      | { ai_soul?: string | null; ai_user_md?: string | null; ai_memory_md?: string | null }
+      | null
+    if (!d) return empty
+    return {
+      soul: d.ai_soul ?? '',
+      userMd: d.ai_user_md ?? '',
+      memoryMd: d.ai_memory_md ?? '',
+    }
+  } catch {
+    return empty
+  }
+}
+
+// Сохраняет одно из трёх полей профиля. Пустую строку пишем как NULL (вернётся
+// поведение по умолчанию, для soul - встроенная душа).
+export async function saveAiProfileField(
+  userId: string,
+  field: 'soul' | 'userMd' | 'memoryMd',
+  value: string,
+): Promise<void> {
+  const column =
+    field === 'soul' ? 'ai_soul' : field === 'userMd' ? 'ai_user_md' : 'ai_memory_md'
+  const v = value.trim() ? value : null
+  await supabase.from('app_settings').upsert(
+    { user_id: userId, [column]: v, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' },
+  )
+}
+
 export type AskResult = {
   reply: string
   provider: string | null
@@ -445,8 +492,20 @@ export async function askAssistant(
     context = ''
   }
 
-  // Системный промпт собираем слоями: SOUL + (нужный навык) + живые данные.
-  const parts: string[] = [SOUL, ACTIONS_SKILL, buildCategoryGuide()]
+  // Редактируемый профиль (Soul / User / Memory). Ошибку игнорируем - работаем на дефолтах.
+  const profile = await loadAiProfile(userId).catch(
+    () => ({ soul: '', userMd: '', memoryMd: '' }) as AiProfile,
+  )
+
+  // Системный промпт собираем слоями: душа (своя или встроенная) + навыки + память + данные.
+  const soul = profile.soul.trim() || SOUL
+  const parts: string[] = [soul, ACTIONS_SKILL, buildCategoryGuide()]
+  if (profile.userMd.trim()) {
+    parts.push(`===== О ПОЛЬЗОВАТЕЛЕ (заметки, которые он задал сам) =====\n${profile.userMd.trim()}`)
+  }
+  if (profile.memoryMd.trim()) {
+    parts.push(`===== ПАМЯТЬ (важные факты, помни о них) =====\n${profile.memoryMd.trim()}`)
+  }
   if (options?.skill) {
     parts.push(`===== НАВЫК (применяй для этого запроса) =====\n${options.skill}`)
   }

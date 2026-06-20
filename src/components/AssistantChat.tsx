@@ -5,10 +5,13 @@ import ConfirmDialog from './ConfirmDialog'
 import { isVoiceSupported, startDictation, type Dictation } from '../lib/voice'
 import {
   ASSISTANT_NAME,
+  SOUL,
   askAssistant,
   loadAiMessages,
   saveAiMessage,
   clearAiMessages,
+  loadAiProfile,
+  saveAiProfileField,
   buildPurchaseQuestion,
   buildMonthlyReviewQuestion,
   PURCHASE_SKILL,
@@ -48,6 +51,16 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [pendingAction, setPendingAction] = useState<AiAction | null>(null)
+
+  // Настройки ассистента: Soul / User / Memory (просмотр и редактирование).
+  const [showSettings, setShowSettings] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'soul' | 'user' | 'memory'>('soul')
+  const [soulText, setSoulText] = useState('')
+  const [userText, setUserText] = useState('')
+  const [memoryText, setMemoryText] = useState('')
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [savingField, setSavingField] = useState(false)
+  const [savedField, setSavedField] = useState<'soul' | 'user' | 'memory' | null>(null)
 
   // Меню быстрых действий (кнопка «+» в поле ввода).
   const [plusOpen, setPlusOpen] = useState(false)
@@ -300,10 +313,59 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
     void saveAiMessage(user.id, { role: 'assistant', content: note.content })
   }
 
+  // Открыть настройки ассистента (Soul / User / Memory) и подгрузить профиль.
+  const openSettings = async () => {
+    setPlusOpen(false)
+    setShowSettings(true)
+    setSavedField(null)
+    if (!user) return
+    setSettingsLoading(true)
+    try {
+      const p = await loadAiProfile(user.id)
+      setSoulText(p.soul)
+      setUserText(p.userMd)
+      setMemoryText(p.memoryMd)
+    } catch {
+      // оставляем пустые поля, профиль ещё не задан
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  // Сохранить активную вкладку профиля в базу.
+  const saveSettings = async () => {
+    if (!user) return
+    const tab = settingsTab
+    const value = tab === 'soul' ? soulText : tab === 'user' ? userText : memoryText
+    const field = tab === 'soul' ? 'soul' : tab === 'user' ? 'userMd' : 'memoryMd'
+    setSavingField(true)
+    setSavedField(null)
+    try {
+      await saveAiProfileField(user.id, field, value)
+      setSavedField(tab)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSavingField(false)
+    }
+  }
+
+  // Очистить «душу»: пустое поле возвращает стандартную душу из кода.
+  const resetSoul = () => {
+    setSoulText('')
+    setSavedField(null)
+  }
+
   const canSend = !!input.trim() && !sending
 
+  // Активная вкладка профиля: значение, сеттер, описание и плейсхолдер.
+  const settingsValue = settingsTab === 'soul' ? soulText : settingsTab === 'user' ? userText : memoryText
+  const setSettingsValue = settingsTab === 'soul' ? setSoulText : settingsTab === 'user' ? setUserText : setMemoryText
+  const settingsDescKey = settingsTab === 'soul' ? 'ai.soulDesc' : settingsTab === 'user' ? 'ai.userDesc' : 'ai.memoryDesc'
+  const settingsPlaceholder = settingsTab === 'soul' ? SOUL : settingsTab === 'user' ? t('ai.userPlaceholder') : t('ai.memoryPlaceholder')
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       {/* Шапка окна: название, очистка и крестик закрытия (если окно-виджет). */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
         <div className="min-w-0">
@@ -311,6 +373,15 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
           <p className="truncate text-xs text-neutral-500">{ASSISTANT_NAME}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => void openSettings()}
+            title={t('ai.settings')}
+            aria-label={t('ai.settings')}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-base text-neutral-500 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            ⚙️
+          </button>
           {messages.length > 0 && (
             <button
               type="button"
@@ -589,6 +660,87 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
           </div>
         </form>
       </div>
+
+      {showSettings && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-neutral-950">
+          <header className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+            <h2 className="truncate text-base font-semibold">{t('ai.settings')}</h2>
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              title={t('ai.close')}
+              aria-label={t('ai.close')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-neutral-500 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              ✕
+            </button>
+          </header>
+
+          <div className="flex shrink-0 gap-1 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
+            {(
+              [
+                ['soul', t('ai.tabSoul')],
+                ['user', t('ai.tabUser')],
+                ['memory', t('ai.tabMemory')],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setSettingsTab(key)
+                  setSavedField(null)
+                }}
+                className={
+                  settingsTab === key
+                    ? 'flex-1 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400'
+                    : 'flex-1 rounded-lg px-2 py-1.5 text-xs text-neutral-500 transition hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+            {settingsLoading ? (
+              <p className="m-auto text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t(settingsDescKey)}</p>
+                <textarea
+                  value={settingsValue}
+                  onChange={(e) => setSettingsValue(e.target.value)}
+                  placeholder={settingsPlaceholder}
+                  className="min-h-[220px] flex-1 resize-none rounded-2xl border border-neutral-300 bg-white px-3 py-2.5 text-sm leading-relaxed outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-900"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void saveSettings()}
+                    disabled={savingField}
+                    className={btnPrimary}
+                  >
+                    {savingField ? t('common.saving') : t('common.save')}
+                  </button>
+                  {settingsTab === 'soul' && (
+                    <button
+                      type="button"
+                      onClick={resetSoul}
+                      className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                    >
+                      {t('ai.resetSoul')}
+                    </button>
+                  )}
+                  {savedField === settingsTab && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">{t('ai.saved')}</span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmClear}
