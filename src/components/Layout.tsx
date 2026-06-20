@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import BackupReminder from './BackupReminder'
+import AssistantWidget from './AssistantWidget'
 import { useLang } from '../lib/i18n'
 
 const navItems = [
@@ -10,7 +11,6 @@ const navItems = [
   { to: '/goals', key: 'nav.goals', icon: '🎯' },
   { to: '/investments', key: 'nav.investments', icon: '📈' },
   { to: '/history', key: 'nav.history', icon: '🗓️' },
-  { to: '/assistant', key: 'nav.assistant', icon: '🤖' },
   { to: '/settings', key: 'nav.settings', icon: '⚙️' },
 ]
 
@@ -72,6 +72,9 @@ export default function Layout() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Плавающий ассистент (кнопка-пузырь + окно). */}
+      <AssistantWidget />
 
       <BackupReminder />
     </div>

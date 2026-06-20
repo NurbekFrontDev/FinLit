@@ -91,6 +91,9 @@ const UI: Record<Lang, Record<string, string>> = {
     'ai.quickGo': 'Записать',
     'ai.voice': 'Голосовой ввод',
     'ai.voiceListening': 'Слушаю… говори, потом нажми ⏹',
+    'ai.analysis': '📊 Разбор месяца',
+    'ai.open': 'Открыть ассистента',
+    'ai.close': 'Закрыть',
 
     'inv.title': 'Инвестиции',
     'inv.tab.overview': 'Обзор',
@@ -596,6 +599,9 @@ const UI: Record<Lang, Record<string, string>> = {
     'ai.quickGo': 'Record',
     'ai.voice': 'Voice input',
     'ai.voiceListening': 'Listening… speak, then tap ⏹',
+    'ai.analysis': '📊 Monthly review',
+    'ai.open': 'Open assistant',
+    'ai.close': 'Close',
 
     'inv.title': 'Investments',
     'inv.tab.overview': 'Overview',
