@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { useLang } from '../lib/i18n'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { isVoiceSupported, startDictation, type Dictation } from '../lib/voice'
 import {
   ASSISTANT_NAME,
   askAssistant,
@@ -10,6 +11,7 @@ import {
   clearAiMessages,
   buildPurchaseQuestion,
   PURCHASE_SKILL,
+  AUTOCAT_SKILL,
   extractAction,
   describeAction,
   runAction,
@@ -30,7 +32,7 @@ function providerLabel(provider: string | null): string | null {
 
 export default function Assistant() {
   const { user } = useAuth()
-  const { t } = useLang()
+  const { t, lang } = useLang()
 
   const [messages, setMessages] = useState<AiMessage[]>([])
   const [input, setInput] = useState('')
@@ -45,6 +47,15 @@ export default function Assistant() {
   const [showPurchase, setShowPurchase] = useState(false)
   const [pItem, setPItem] = useState('')
   const [pPrice, setPPrice] = useState('')
+
+  // Быстрый ввод (ИИ-6): одна строка с авто-категоризацией.
+  const [showQuick, setShowQuick] = useState(false)
+  const [qText, setQText] = useState('')
+
+  // Голосовой ввод (ИИ-6): диктовка через Web Speech API.
+  const voiceSupported = useMemo(() => isVoiceSupported(), [])
+  const [listening, setListening] = useState(false)
+  const dictationRef = useRef<Dictation | null>(null)
 
   const endRef = useRef<HTMLDivElement | null>(null)
 
@@ -72,6 +83,14 @@ export default function Assistant() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
+
+  // Останавливаем диктовку при уходе со страницы.
+  useEffect(() => {
+    return () => {
+      dictationRef.current?.stop()
+      dictationRef.current = null
+    }
+  }, [])
 
   // Общая отправка сообщения ассистенту. options.skill подмешивает нужный навык.
   const sendMessage = async (text: string, options?: { skill?: string }) => {
@@ -145,6 +164,44 @@ export default function Assistant() {
     await sendMessage(text, { skill: PURCHASE_SKILL })
   }
 
+  // Голос: запуск/остановка диктовки. Распознанный текст добавляем в поле быстрого ввода.
+  const stopVoice = () => {
+    dictationRef.current?.stop()
+    dictationRef.current = null
+    setListening(false)
+  }
+  const toggleVoice = () => {
+    if (listening) {
+      stopVoice()
+      return
+    }
+    const d = startDictation(lang === 'en' ? 'en-US' : 'ru-RU', {
+      onText: (text) => setQText((prev) => (prev ? prev + ' ' : '') + text),
+      onEnd: () => {
+        dictationRef.current = null
+        setListening(false)
+      },
+      onError: () => {
+        dictationRef.current = null
+        setListening(false)
+      },
+    })
+    if (d) {
+      dictationRef.current = d
+      setListening(true)
+    }
+  }
+
+  // Быстрый ввод (ИИ-6): шлём фразу с навыком авто-категоризации.
+  const submitQuick = async () => {
+    const text = qText.trim()
+    if (!text || sending) return
+    stopVoice()
+    setShowQuick(false)
+    setQText('')
+    await sendMessage(text, { skill: AUTOCAT_SKILL })
+  }
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     void submit()
@@ -209,10 +266,23 @@ export default function Assistant() {
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setShowPurchase((v) => !v)}
+          onClick={() => {
+            setShowPurchase((v) => !v)
+            setShowQuick(false)
+          }}
           className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-400"
         >
           {t('ai.purchase')}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setShowQuick((v) => !v)
+            setShowPurchase(false)
+          }}
+          className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-400"
+        >
+          {t('ai.quick')}
         </button>
       </div>
 
@@ -245,6 +315,64 @@ export default function Assistant() {
             <button
               type="button"
               onClick={() => setShowPurchase(false)}
+              className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showQuick && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
+          <p className="text-sm font-medium">{t('ai.quickTitle')}</p>
+          <p className="text-xs text-neutral-500">{t('ai.quickHint')}</p>
+          <div className="flex gap-2">
+            <input
+              value={qText}
+              onChange={(e) => setQText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void submitQuick()
+                }
+              }}
+              placeholder={t('ai.quickPlaceholder')}
+              className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+            />
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleVoice}
+                title={t('ai.voice')}
+                className={
+                  listening
+                    ? 'shrink-0 rounded-lg border border-red-400 bg-red-500/10 px-3 py-2.5 text-sm text-red-600 transition dark:text-red-400'
+                    : 'shrink-0 rounded-lg border border-neutral-300 px-3 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
+                }
+              >
+                {listening ? '⏹' : '🎤'}
+              </button>
+            )}
+          </div>
+          {listening && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">{t('ai.voiceListening')}</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void submitQuick()}
+              disabled={sending || !qText.trim()}
+              className={btnPrimary}
+            >
+              {t('ai.quickGo')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                stopVoice()
+                setShowQuick(false)
+              }}
               className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
               {t('common.cancel')}
