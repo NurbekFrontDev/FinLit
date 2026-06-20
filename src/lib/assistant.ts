@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { buildAiContext } from './db'
+import { buildAiContext, getOrCreateMonth, formatSum } from './db'
 
 // ===== ИИ-ассистент «FinLit Бухгалтер» (ИИ-3) =====
 // Здесь живёт «душа» ассистента (SOUL) и работа с историей чата.
@@ -68,6 +68,190 @@ export function buildPurchaseQuestion(item: string, price: string): string {
   const pr = price.trim()
   const priceText = pr ? ` примерно за ${pr}` : ''
   return `Разбери покупку по схеме 🟢🟡🔴📋: «${it}»${priceText}. Стоит ли мне это покупать сейчас?`
+}
+
+// ===== Навык «Действия» (ИИ-5): запись операций с подтверждением =====
+// Ассистент умеет записывать за пользователя расход или доход. Чтобы это работало
+// у обоих провайдеров (Grok и GLM) без серверных правок, мы НЕ используем «родной»
+// function-calling, а просим модель добавить в конце ответа компактный блок ```action
+// с JSON. Приложение распознаёт его, показывает кнопку подтверждения и только после
+// согласия пользователя реально пишет в базу. Так соблюдается правило «действия только
+// с подтверждением».
+export const ACTIONS_SKILL = `НАВЫК: «Действия» (запись операций по просьбе пользователя).
+Ты умеешь записывать за пользователя расход или доход. Делай это ТОЛЬКО когда пользователь явно просит записать, добавить, внести или потратить (например «запиши расход 20 на продукты», «добавь доход 1500 зарплата»).
+
+Как оформить действие:
+1. Сначала обычным языком коротко подтверди, что собираешься записать (сумма, категория или источник, дата если названа).
+2. В САМОМ КОНЦЕ ответа добавь блок действия ровно в таком формате (тройные кавычки с меткой action):
+
+\`\`\`action
+{"type":"add_expense","amount":20,"category":"Обязательные","subcategory":"Продукты","note":"молоко","summary":"Записать расход $20.00 в «Обязательные / Продукты»"}
+\`\`\`
+
+Поля блока:
+- type: "add_expense" (расход) или "add_income" (доход).
+- amount: число в долларах, строго больше нуля.
+- Для расхода: category (точное название категории из «СВОДКИ ФИНАНСОВ»), при желании subcategory и note.
+- Для дохода: source (источник, например «Зарплата»), при желании note.
+- date: "ГГГГ-ММ-ДД", только если пользователь назвал дату. Без даты поле не указывай - запишется на сегодня.
+- summary: короткая фраза-подтверждение для пользователя.
+
+Правила:
+- category бери ТОЛЬКО из списка категорий пользователя в сводке. Если не уверен, какая категория - сначала задай один уточняющий вопрос и НЕ добавляй блок.
+- Не добавляй блок action, если пользователь просто просит совет или размышляет вслух. Блок нужен только для реальной записи.
+- В одном ответе максимум один блок action.
+- Не проси подтверждать словами: приложение само покажет кнопку подтверждения.
+- Никогда не выдумывай сумму. Если суммы нет - уточни.`
+
+// Действие, которое предлагает ассистент (распознаётся из блока ```action).
+export type AiAction =
+  | {
+      type: 'add_expense'
+      amount: number
+      category: string | null
+      subcategory: string | null
+      date: string | null
+      note: string | null
+      summary: string | null
+    }
+  | {
+      type: 'add_income'
+      amount: number
+      source: string | null
+      date: string | null
+      note: string | null
+      summary: string | null
+    }
+
+// Результат разбора ответа: текст для показа (без служебного блока) и само действие.
+export type ParsedReply = { text: string; action: AiAction | null }
+
+const ACTION_BLOCK_RE = /```action\s*\n?([\s\S]*?)```/i
+
+function isIsoDate(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null
+}
+
+// Приводит «сырой» объект из блока к безопасному действию или null.
+function normalizeAction(raw: unknown): AiAction | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const amount = Math.round((Number(o.amount) || 0) * 100) / 100
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  if (o.type === 'add_expense') {
+    return {
+      type: 'add_expense',
+      amount,
+      category: str(o.category),
+      subcategory: str(o.subcategory),
+      date: isIsoDate(o.date) ? o.date : null,
+      note: str(o.note),
+      summary: str(o.summary),
+    }
+  }
+  if (o.type === 'add_income') {
+    return {
+      type: 'add_income',
+      amount,
+      source: str(o.source),
+      date: isIsoDate(o.date) ? o.date : null,
+      note: str(o.note),
+      summary: str(o.summary),
+    }
+  }
+  return null
+}
+
+// Достаёт действие из ответа модели и возвращает текст без служебного блока.
+export function extractAction(reply: string): ParsedReply {
+  const m = reply.match(ACTION_BLOCK_RE)
+  if (!m) return { text: reply.trim(), action: null }
+  let action: AiAction | null = null
+  try {
+    action = normalizeAction(JSON.parse(m[1].trim()))
+  } catch {
+    action = null
+  }
+  const text = reply.replace(m[0], '').trim()
+  return { text, action }
+}
+
+// Человеческое описание действия для окна подтверждения.
+export function describeAction(a: AiAction): string {
+  if (a.summary) return a.summary
+  const dateNote = a.date ? `, дата ${a.date}` : ''
+  if (a.type === 'add_expense') {
+    const cat = a.category ? `, категория «${a.category}»` : ''
+    const sub = a.subcategory ? ` / ${a.subcategory}` : ''
+    return `Записать расход ${formatSum(a.amount)}${cat}${sub}${dateNote}`
+  }
+  const src = a.source ? `, источник «${a.source}»` : ''
+  return `Записать доход ${formatSum(a.amount)}${src}${dateNote}`
+}
+
+export type ActionResult = { ok: boolean; message: string }
+
+// Реально выполняет подтверждённое действие: пишет расход или доход в базу.
+// Возвращает короткое сообщение для показа в чате.
+export async function runAction(userId: string, action: AiAction): Promise<ActionResult> {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const date = action.date ?? today
+    const d = new Date(date + 'T00:00:00')
+    const m = await getOrCreateMonth(userId, d.getFullYear(), d.getMonth() + 1)
+
+    if (action.type === 'add_expense') {
+      // Сопоставляем название категории с её id (без учёта регистра).
+      let categoryId: string | null = null
+      let categoryMissing = false
+      if (action.category) {
+        const { data: cats } = await supabase
+          .from('categories')
+          .select('id, name')
+          .eq('user_id', userId)
+        const found = ((cats ?? []) as { id: string; name: string }[]).find(
+          (c) => (c.name ?? '').trim().toLowerCase() === action.category!.trim().toLowerCase(),
+        )
+        categoryId = found?.id ?? null
+        categoryMissing = !found
+      }
+      const { error } = await supabase.from('expenses').insert({
+        user_id: userId,
+        month_id: m.id,
+        category_id: categoryId,
+        subcategory: action.subcategory,
+        amount: action.amount,
+        date,
+        description: action.note,
+        paid_from_pot: null,
+      })
+      if (error) return { ok: false, message: 'Не удалось записать расход: ' + error.message }
+      const catNote = action.category
+        ? categoryMissing
+          ? `, категория «${action.category}» не найдена - записал без категории`
+          : `, категория «${action.category}»`
+        : ''
+      return { ok: true, message: `Записал расход ${formatSum(action.amount)}${catNote}.` }
+    }
+
+    const { error } = await supabase.from('incomes').insert({
+      user_id: userId,
+      month_id: m.id,
+      amount: action.amount,
+      date,
+      source: action.source,
+      description: action.note,
+    })
+    if (error) return { ok: false, message: 'Не удалось записать доход: ' + error.message }
+    const srcNote = action.source ? `, источник «${action.source}»` : ''
+    return { ok: true, message: `Записал доход ${formatSum(action.amount)}${srcNote}.` }
+  } catch (e) {
+    return { ok: false, message: 'Ошибка при записи: ' + String(e) }
+  }
 }
 
 export type AiRole = 'user' | 'assistant'
@@ -150,7 +334,7 @@ export async function askAssistant(
   }
 
   // Системный промпт собираем слоями: SOUL + (нужный навык) + живые данные.
-  const parts: string[] = [SOUL]
+  const parts: string[] = [SOUL, ACTIONS_SKILL]
   if (options?.skill) {
     parts.push(`===== НАВЫК (применяй для этого запроса) =====\n${options.skill}`)
   }

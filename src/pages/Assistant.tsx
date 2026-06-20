@@ -10,7 +10,11 @@ import {
   clearAiMessages,
   buildPurchaseQuestion,
   PURCHASE_SKILL,
+  extractAction,
+  describeAction,
+  runAction,
   type AiMessage,
+  type AiAction,
 } from '../lib/assistant'
 
 const btnPrimary =
@@ -34,6 +38,8 @@ export default function Assistant() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  // Действие (ИИ-5), предложенное ассистентом и ждущее подтверждения.
+  const [pendingAction, setPendingAction] = useState<AiAction | null>(null)
 
   // Разбор покупки (ИИ-4): мини-форма помощника.
   const [showPurchase, setShowPurchase] = useState(false)
@@ -90,10 +96,18 @@ export default function Assistant() {
         setError(res.error === 'network' ? t('ai.errNetwork') : t('ai.errGeneric'))
         return
       }
+      // ИИ-5: вытаскиваем возможное действие и показываем чистый текст без служебного блока.
+      const { text, action } = extractAction(res.reply)
+      const display =
+        text.length > 0
+          ? text
+          : action
+            ? 'Готов записать операцию, подтвердите ниже 👇'
+            : res.reply
       const aiMsg: AiMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: res.reply,
+        content: display,
         provider: res.provider,
         model: res.model,
         created_at: new Date().toISOString(),
@@ -101,10 +115,11 @@ export default function Assistant() {
       setMessages((prev) => [...prev, aiMsg])
       void saveAiMessage(user.id, {
         role: 'assistant',
-        content: res.reply,
+        content: display,
         provider: res.provider,
         model: res.model,
       })
+      if (action) setPendingAction(action)
     } catch {
       setError(t('ai.errNetwork'))
     } finally {
@@ -153,6 +168,24 @@ export default function Assistant() {
       setMessages(prev)
       setError((e as Error).message)
     }
+  }
+
+  // ИИ-5: пользователь подтвердил действие - выполняем запись и пишем результат в чат.
+  const doAction = async () => {
+    if (!user || !pendingAction) return
+    const action = pendingAction
+    setPendingAction(null)
+    const res = await runAction(user.id, action)
+    const note: AiMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: (res.ok ? '✅ ' : '⚠️ ') + res.message,
+      provider: null,
+      model: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, note])
+    void saveAiMessage(user.id, { role: 'assistant', content: note.content })
   }
 
   return (
@@ -286,6 +319,15 @@ export default function Assistant() {
         danger
         onConfirm={doClear}
         onCancel={() => setConfirmClear(false)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingAction}
+        title={t('ai.actionTitle')}
+        message={pendingAction ? describeAction(pendingAction) : ''}
+        confirmLabel={t('ai.actionConfirm')}
+        onConfirm={() => void doAction()}
+        onCancel={() => setPendingAction(null)}
       />
     </div>
   )

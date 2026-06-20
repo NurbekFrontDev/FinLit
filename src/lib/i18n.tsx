@@ -82,6 +82,8 @@ const UI: Record<Lang, Record<string, string>> = {
     'ai.purchaseItem': 'Что хочешь купить?',
     'ai.purchasePrice': 'Цена, $ (необязательно)',
     'ai.purchaseGo': 'Разобрать',
+    'ai.actionTitle': 'Подтвердить запись?',
+    'ai.actionConfirm': 'Записать',
 
     'inv.title': 'Инвестиции',
     'inv.tab.overview': 'Обзор',
@@ -578,6 +580,8 @@ const UI: Record<Lang, Record<string, string>> = {
     'ai.purchaseItem': 'What do you want to buy?',
     'ai.purchasePrice': 'Price, $ (optional)',
     'ai.purchaseGo': 'Analyze',
+    'ai.actionTitle': 'Confirm the entry?',
+    'ai.actionConfirm': 'Record',
 
     'inv.title': 'Investments',
     'inv.tab.overview': 'Overview',
