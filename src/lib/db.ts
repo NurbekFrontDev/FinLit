@@ -786,3 +786,175 @@ export async function createCryptoExpense(
     return null
   }
 }
+
+// ===== Контекст для ИИ-ассистента (ИИ-2) =====
+// Собирает компактную сводку финансов пользователя в виде текста. Её подкладывают
+// ассистенту «FinLit Бухгалтер», чтобы он отвечал по реальным цифрам, а не общими
+// словами. Намеренно компактно: только агрегаты и короткие списки активных целей
+// и непогашенных долгов, чтобы не раздувать токены. Все суммы в долларах (formatSum).
+// Логика расходов повторяет дашборд: траты из копилок (paid_from_pot) и накопления
+// (Сбережения/Инвестиции/Благотворительность) не считаем расходом «на жизнь».
+export async function buildAiContext(userId: string): Promise<string> {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const m = await getOrCreateMonth(userId, year, month)
+
+  const [
+    catsRes,
+    incRes,
+    expRes,
+    contribRes,
+    goalsRes,
+    debtsRes,
+    paymentsRes,
+    pots,
+    cushionMonths,
+    goalsSplit,
+    charityGoal,
+  ] = await Promise.all([
+    supabase.from('categories').select('id, name, percent').eq('user_id', userId).eq('archived', false).order('sort_order'),
+    supabase.from('incomes').select('amount').eq('month_id', m.id),
+    supabase.from('expenses').select('amount, category_id, paid_from_pot').eq('month_id', m.id),
+    supabase.from('goal_contributions').select('goal_id, amount').eq('user_id', userId),
+    supabase.from('goals').select('id, name, target_amount, target_date, is_goal, is_primary, done, category').eq('user_id', userId),
+    supabase.from('debts').select('id, person, amount').eq('user_id', userId).eq('archived', false),
+    supabase.from('debt_payments').select('debt_id, amount').eq('user_id', userId),
+    loadSavingsPots(userId),
+    loadCushionMonths(userId),
+    loadGoalsSplit(userId),
+    loadCharityGoal(userId),
+  ])
+
+  // Рекомендуемый размер подушки зависит от выбранного покрытия (3/6/12 мес.).
+  const cushion = await loadCushionStats(userId, cushionMonths).catch(() => ({
+    monthsUsed: 0,
+    totalExpenses: 0,
+    avgMonthly: 0,
+    recommended: 0,
+  }))
+
+  type Cat = { id: string; name: string; percent: number | null }
+  const cats = (catsRes.data ?? []) as Cat[]
+  const incomeSum = ((incRes.data ?? []) as { amount: number }[]).reduce((s, r) => s + Number(r.amount), 0)
+
+  const savingsCatIds = new Set(cats.filter((c) => isSavingsCategory(c.name)).map((c) => c.id))
+  const charityCatIds = new Set(cats.filter((c) => isCharityCategory(c.name)).map((c) => c.id))
+
+  const exps = (expRes.data ?? []) as { amount: number; category_id: string | null; paid_from_pot: string | null }[]
+  const factByCat: Record<string, number> = {}
+  for (const e of exps) {
+    if (!e.category_id) continue
+    if (e.paid_from_pot) continue // трата из копилки, а не расход дохода месяца
+    factByCat[e.category_id] = (factByCat[e.category_id] ?? 0) + Number(e.amount)
+  }
+  const expenseSum = exps
+    .filter((e) => !e.paid_from_pot)
+    .filter((e) => !e.category_id || (!savingsCatIds.has(e.category_id) && !charityCatIds.has(e.category_id)))
+    .reduce((s, e) => s + Number(e.amount), 0)
+
+  const planned = Number(m.planned_income) || 0
+
+  // Цели и вклады в них.
+  const contribs = (contribRes.data ?? []) as { goal_id: string; amount: number }[]
+  const savedFor = (goalId: string) =>
+    contribs.filter((c) => c.goal_id === goalId).reduce((s, c) => s + Number(c.amount), 0)
+  type GoalRow = {
+    id: string
+    name: string
+    target_amount: number
+    target_date: string | null
+    is_goal: boolean
+    is_primary: boolean
+    done: boolean
+    category: string | null
+  }
+  const goals = (goalsRes.data ?? []) as GoalRow[]
+  const activeGoals = goals.filter((g) => g.is_goal && !g.done)
+  const primaryGoal = activeGoals.find((g) => g.is_primary) ?? null
+  const otherGoals = activeGoals.filter((g) => g.id !== primaryGoal?.id)
+
+  // Долги и платежи.
+  const payments = (paymentsRes.data ?? []) as { debt_id: string; amount: number }[]
+  const paidFor = (debtId: string) =>
+    payments.filter((p) => p.debt_id === debtId).reduce((s, p) => s + Number(p.amount), 0)
+  type DebtRow = { id: string; person: string; amount: number }
+  const debts = (debtsRes.data ?? []) as DebtRow[]
+  const unpaidDebts = debts
+    .map((d) => ({ person: d.person, remaining: Math.max(0, Number(d.amount) - paidFor(d.id)), total: Number(d.amount) }))
+    .filter((d) => d.remaining > 0)
+  const debtsLeft = unpaidDebts.reduce((s, d) => s + d.remaining, 0)
+
+  // Сборка компактного текста.
+  const lines: string[] = []
+  lines.push(`СВОДКА ФИНАНСОВ ПОЛЬЗОВАТЕЛЯ (на ${monthName(month - 1)} ${year}, все суммы в долларах США).`)
+  lines.push('')
+  lines.push('Текущий месяц:')
+  lines.push(`- План дохода: ${formatSum(planned)}`)
+  lines.push(`- Доход (факт): ${formatSum(incomeSum)}`)
+  lines.push(`- Расходы на жизнь (факт, без накоплений и благотворительности): ${formatSum(expenseSum)}`)
+  lines.push(`- Остаток дохода после расходов: ${formatSum(incomeSum - expenseSum)}`)
+
+  if (cats.length > 0) {
+    lines.push('')
+    lines.push('План против факта по категориям (план = % от фактического дохода):')
+    for (const c of cats) {
+      const percent = Number(c.percent ?? 0)
+      const plan = (incomeSum * percent) / 100
+      const fact = factByCat[c.id] ?? 0
+      lines.push(`- ${c.name} (${percent}%): факт ${formatSum(fact)} / план ${formatSum(plan)}`)
+    }
+  }
+
+  lines.push('')
+  lines.push('Копилки и накопления (за всё время):')
+  lines.push(
+    `- Подушка безопасности: ${formatSum(pots.cushion)}` +
+      (cushion.recommended > 0 ? ` (цель ${formatSum(cushion.recommended)} на ${cushionMonths} мес.)` : ''),
+  )
+  lines.push(`- Свободные накопления: ${formatSum(pots.free)}`)
+  lines.push(`- Всего отложено (личное): ${formatSum(pots.total)}`)
+  lines.push(`- Копилка благотворительности: ${formatSum(pots.charity)}`)
+
+  lines.push('')
+  if (activeGoals.length === 0) {
+    lines.push('Цели: активных целей нет.')
+  } else {
+    lines.push('Активные цели:')
+    const describeGoal = (g: GoalRow, isMain: boolean) => {
+      const saved = savedFor(g.id)
+      const remaining = Math.max(0, Number(g.target_amount) - saved)
+      const dateNote = g.target_date ? `, до ${formatDateHuman(g.target_date)}` : ''
+      const prefix = isMain ? '⭐ Главная цель ' : '- '
+      return `${prefix}«${g.name}»: отложено ${formatSum(saved)} из ${formatSum(Number(g.target_amount))} (остаток ${formatSum(remaining)}${dateNote})`
+    }
+    if (primaryGoal) lines.push(describeGoal(primaryGoal, true))
+    for (const g of otherGoals.slice(0, 10)) lines.push(describeGoal(g, false))
+    if (otherGoals.length > 10) lines.push(`- и ещё ${otherGoals.length - 10} целей`)
+  }
+
+  lines.push('')
+  if (unpaidDebts.length === 0) {
+    lines.push('Долги: непогашенных долгов нет.')
+  } else {
+    lines.push(`Непогашенные долги (всего осталось ${formatSum(debtsLeft)}):`)
+    for (const d of unpaidDebts.slice(0, 15)) {
+      lines.push(`- ${d.person}: осталось ${formatSum(d.remaining)} из ${formatSum(d.total)}`)
+    }
+    if (unpaidDebts.length > 15) lines.push(`- и ещё ${unpaidDebts.length - 15} долгов`)
+  }
+
+  lines.push('')
+  lines.push(
+    `Настройки: распределение бюджета «Цели» главная/прочие = ${goalsSplit}/${100 - goalsSplit}%, покрытие подушки = ${cushionMonths} мес.`,
+  )
+  if (charityGoal.name) {
+    lines.push(
+      `Цель по благотворительности: «${charityGoal.name}»` +
+        (charityGoal.target ? `, ${formatSum(charityGoal.target)}` : '') +
+        '.',
+    )
+  }
+
+  return lines.join('\n')
+}

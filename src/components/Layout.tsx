@@ -10,6 +10,7 @@ const navItems = [
   { to: '/goals', key: 'nav.goals', icon: '🎯' },
   { to: '/investments', key: 'nav.investments', icon: '📈' },
   { to: '/history', key: 'nav.history', icon: '🗓️' },
+  { to: '/assistant', key: 'nav.assistant', icon: '🤖' },
   { to: '/settings', key: 'nav.settings', icon: '⚙️' },
 ]
 

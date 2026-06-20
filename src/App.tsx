@@ -11,6 +11,7 @@ import Investments from './pages/Investments'
 import Charity from './pages/Charity'
 import History from './pages/History'
 import Settings from './pages/Settings'
+import Assistant from './pages/Assistant'
 
 function App() {
   const { session, loading } = useAuth()
@@ -44,6 +45,7 @@ function App() {
         <Route path="/charity" element={<Charity />} />
         <Route path="/debts" element={<Navigate to="/expenses" replace />} />
         <Route path="/history" element={<History />} />
+        <Route path="/assistant" element={<Assistant />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
