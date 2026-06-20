@@ -336,113 +336,18 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
         </div>
       </header>
 
-      {/* Прокручиваемая область: формы и сообщения. */}
+      {/* Прокручиваемая область: только сообщения. */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
-        {showPurchase && (
-          <div className="flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
-            <p className="text-sm font-medium">{t('ai.purchaseTitle')}</p>
-            <p className="text-xs text-neutral-500">{t('ai.purchaseHint')}</p>
-            <input
-              value={pItem}
-              onChange={(e) => setPItem(e.target.value)}
-              placeholder={t('ai.purchaseItem')}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
-            />
-            <input
-              value={pPrice}
-              onChange={(e) => setPPrice(e.target.value)}
-              inputMode="decimal"
-              placeholder={t('ai.purchasePrice')}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void submitPurchase()}
-                disabled={sending || !pItem.trim()}
-                className={btnPrimary}
-              >
-                {t('ai.purchaseGo')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPurchase(false)}
-                className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {showQuick && (
-          <div className="flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
-            <p className="text-sm font-medium">{t('ai.quickTitle')}</p>
-            <p className="text-xs text-neutral-500">{t('ai.quickHint')}</p>
-            <div className="flex gap-2">
-              <input
-                value={qText}
-                onChange={(e) => setQText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void submitQuick()
-                  }
-                }}
-                placeholder={t('ai.quickPlaceholder')}
-                className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
-              />
-              {voiceSupported && (
-                <button
-                  type="button"
-                  onClick={toggleQuickVoice}
-                  title={t('ai.voice')}
-                  className={
-                    listening
-                      ? 'shrink-0 rounded-lg border border-red-400 bg-red-500/10 px-3 py-2.5 text-sm text-red-600 transition dark:text-red-400'
-                      : 'shrink-0 rounded-lg border border-neutral-300 px-3 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
-                  }
-                >
-                  {listening ? '⏹' : '🎤'}
-                </button>
-              )}
-            </div>
-            {listening && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400">{t('ai.voiceListening')}</p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void submitQuick()}
-                disabled={sending || !qText.trim()}
-                className={btnPrimary}
-              >
-                {t('ai.quickGo')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  stopVoice()
-                  setShowQuick(false)
-                }}
-                className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        )}
-
         {loading ? (
-          <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
+          <p className="m-auto text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
+        ) : messages.length === 0 ? (
+          <div className="m-auto px-6 text-center">
+            <p className="text-xl font-semibold text-neutral-700 dark:text-neutral-200">
+              {lang === 'en' ? 'Hi, Nurbek 👋' : 'Привет, Нурбек 👋'}
+            </p>
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.length === 0 && (
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-neutral-300">
-                <p>{t('ai.empty')}</p>
-                <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t('ai.privacy')}</p>
-              </div>
-            )}
             {messages.map((m) => (
               <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
                 <div
@@ -477,7 +382,7 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
       </div>
 
       {/* Поле ввода (минималистичное, в стиле ChatGPT): текст сверху, кнопки снизу. */}
-      <div className="relative shrink-0 px-3 pt-1">
+      <div className="relative shrink-0 px-3 pb-3 pt-1">
         {plusOpen && (
           <>
             {/* Невидимый слой: клик мимо меню закрывает его. */}
@@ -498,6 +403,120 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
               <button type="button" onClick={openAnalysis} disabled={sending} className={menuItem}>
                 {t('ai.analysis')}
               </button>
+            </div>
+          </>
+        )}
+
+        {showPurchase && (
+          <>
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => setShowPurchase(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div className="absolute bottom-full left-3 right-3 z-20 mb-2 flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+              <p className="text-sm font-medium">{t('ai.purchaseTitle')}</p>
+              <input
+                value={pItem}
+                onChange={(e) => setPItem(e.target.value)}
+                placeholder={t('ai.purchaseItem')}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+              />
+              <input
+                value={pPrice}
+                onChange={(e) => setPPrice(e.target.value)}
+                inputMode="decimal"
+                placeholder={t('ai.purchasePrice')}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void submitPurchase()}
+                  disabled={sending || !pItem.trim()}
+                  className={btnPrimary}
+                >
+                  {t('ai.purchaseGo')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPurchase(false)}
+                  className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {showQuick && (
+          <>
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => {
+                stopVoice()
+                setShowQuick(false)
+              }}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div className="absolute bottom-full left-3 right-3 z-20 mb-2 flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+              <p className="text-sm font-medium">{t('ai.quickTitle')}</p>
+              <div className="flex gap-2">
+                <input
+                  value={qText}
+                  onChange={(e) => setQText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void submitQuick()
+                    }
+                  }}
+                  placeholder={t('ai.quickPlaceholder')}
+                  className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950"
+                />
+                {voiceSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleQuickVoice}
+                    title={t('ai.voice')}
+                    className={
+                      listening
+                        ? 'shrink-0 rounded-lg border border-red-400 bg-red-500/10 px-3 py-2.5 text-sm text-red-600 transition dark:text-red-400'
+                        : 'shrink-0 rounded-lg border border-neutral-300 px-3 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
+                    }
+                  >
+                    {listening ? '⏹' : '🎤'}
+                  </button>
+                )}
+              </div>
+              {listening && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">{t('ai.voiceListening')}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void submitQuick()}
+                  disabled={sending || !qText.trim()}
+                  className={btnPrimary}
+                >
+                  {t('ai.quickGo')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopVoice()
+                    setShowQuick(false)
+                  }}
+                  className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -570,11 +589,6 @@ export default function AssistantChat({ onClose }: { onClose?: () => void }) {
           </div>
         </form>
       </div>
-
-      {/* ИИ-8: дисклеймер - подсказки образовательные, а не финансовая консультация. */}
-      <p className="shrink-0 px-4 pb-2 pt-1.5 text-center text-[10px] leading-tight text-neutral-400 dark:text-neutral-500">
-        {t('ai.disclaimer')}
-      </p>
 
       <ConfirmDialog
         open={confirmClear}
