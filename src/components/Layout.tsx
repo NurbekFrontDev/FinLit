@@ -52,7 +52,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen md:flex">
       {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:border-neutral-200 md:p-4 dark:md:border-neutral-800">
+      <aside className="hidden md:flex md:w-64 md:flex-col md:border-r md:border-neutral-200 md:p-4 dark:md:border-neutral-800">
         <div className="mb-4 flex items-center gap-2 px-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-lg">
             ⚛️
