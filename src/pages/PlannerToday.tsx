@@ -775,7 +775,7 @@ export default function PlannerToday() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('today.empty')}</p>
           ) : (
             <>
-              {!sections && items.length > 1 && (
+              {items.length > 1 && (
                 <button
                   type="button"
                   onClick={() => setReorder((v) => !v)}
@@ -789,7 +789,7 @@ export default function PlannerToday() {
                 </button>
               )}
 
-              {sections ? (
+              {sections && !reorder ? (
                 sectionDefs.map((s) => {
                   const list = items.filter((i) =>
                     s.key === 'none' ? !i.time_of_day : i.time_of_day === s.key,

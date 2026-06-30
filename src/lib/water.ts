@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { addDays } from './planner'
 
 // ====================================================================
 // Трекер питьевой воды (💧). Вдохновлён WaterMinder / MapMyRun.
@@ -72,3 +73,22 @@ export async function removeWaterLog(userId: string, id: string): Promise<void> 
 
 // Быстрые объёмы (как «чашки» в WaterMinder)
 export const QUICK_VOLUMES = [150, 250, 330, 500]
+
+// Загружает сводку выпитого за 7 дней (для мини-истории).
+export async function loadWaterWeek(
+  userId: string,
+  endDate: string,
+): Promise<Record<string, number>> {
+  const start = addDays(endDate, -6)
+  const { data } = await supabase
+    .from('water_logs')
+    .select('date, amount')
+    .eq('user_id', userId)
+    .gte('date', start)
+    .lte('date', endDate)
+  const out: Record<string, number> = {}
+  for (const row of (data ?? []) as { date: string; amount: number }[]) {
+    out[row.date] = (out[row.date] ?? 0) + Number(row.amount)
+  }
+  return out
+}

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from './lib/AuthContext'
+import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -20,32 +21,41 @@ import PlannerStats from './pages/PlannerStats'
 import PlannerSettings from './pages/PlannerSettings'
 import WaterTracker from './pages/WaterTracker'
 
-function NotFoundRedirect() {
-  const last = (() => {
-    try {
-      return localStorage.getItem('finlit-last-path')
-    } catch {
-      return null
-    }
-  })()
-  const to = last && last !== '/login' ? last : '/'
+function NotFoundRedirect({ fallback }: { fallback: string }) {
+  const to = fallback && fallback !== '/login' ? fallback : '/'
   return <Navigate to={to} replace />
 }
 
 function App() {
   const { session, loading } = useAuth()
   const location = useLocation()
+  const [lastPath, setLastPath] = useState('/')
 
-  // Remember last visited page (for next session restore).
+  // Load last path from DB on session start (syncs across devices).
   useEffect(() => {
-    if (session && location.pathname !== '/login') {
-      try {
-        localStorage.setItem('finlit-last-path', location.pathname)
-      } catch {
-        // ignore
-      }
+    if (!session?.user?.id) return
+    let active = true
+    ;(async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('last_path')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+      const v = (data as { last_path?: string } | null)?.last_path
+      if (active && v) setLastPath(v)
+    })()
+    return () => { active = false }
+  }, [session?.user?.id])
+
+  // Save last visited page to DB (syncs across devices).
+  useEffect(() => {
+    if (session?.user?.id && location.pathname !== '/login') {
+      void supabase.from('app_settings').upsert(
+        { user_id: session.user.id, last_path: location.pathname, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      )
     }
-  }, [session, location.pathname])
+  }, [session?.user?.id, location.pathname])
 
   if (loading) {
     return (
@@ -86,7 +96,7 @@ function App() {
         <Route path="/planner/stats" element={<PlannerStats />} />
         <Route path="/planner/settings" element={<PlannerSettings />} />
         <Route path="/planner/water" element={<WaterTracker />} />
-        <Route path="*" element={<NotFoundRedirect />} />
+        <Route path="*" element={<NotFoundRedirect fallback={lastPath} />} />
       </Route>
     </Routes>
   )
