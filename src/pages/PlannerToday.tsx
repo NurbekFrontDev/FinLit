@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { useLang } from '../lib/i18n'
 import { formatDateHuman } from '../lib/db'
+import HabitSheet from '../components/HabitSheet'
 import {
   loadDay,
   toggleDone,
@@ -35,6 +36,7 @@ export default function PlannerToday() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reorder, setReorder] = useState(false)
+  const [sheetItem, setSheetItem] = useState<PlannerItem | null>(null)
 
   // ===== Перетаскивание дел внутри дня (тот же механизм, что в «Долгах»). =====
   type DragState = {
@@ -84,6 +86,18 @@ export default function PlannerToday() {
       active = false
     }
   }, [user, date])
+
+  // Перезагрузка дня (после отметок в окне привычки).
+  const reload = async () => {
+    if (!user) return
+    try {
+      const day = await loadDay(user.id, date)
+      setItems(day.items)
+      setLogs(day.logs)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
 
   const isDone = (id: string) => logs[id]?.status === 'done'
   const total = items.length
@@ -259,11 +273,13 @@ export default function PlannerToday() {
     </button>
   )
 
-  // Обычная строка дела: чекбокс, кружок важности, иконка, название, время.
+  // Строка дела/привычки: чекбокс, кружок важности, иконка, название, время.
+  // Привычку можно нажать — откроется окно в стиле Atoms (история, календарь, стрики).
   const renderTask = (item: PlannerItem) => {
     const done = isDone(item.id)
     const dot = PRIORITY_DOT[item.priority]
     const time = timeLabel(item)
+    const isHabit = item.type === 'habit'
     return (
       <div key={item.id} className={`flex items-center gap-3 ${cardCls}${done ? ' opacity-60' : ''}`}>
         <button
@@ -280,16 +296,35 @@ export default function PlannerToday() {
         </button>
         {dot && <span className="shrink-0 text-xs leading-none">{dot}</span>}
         {item.icon && <span className="shrink-0">{item.icon}</span>}
-        <div className="min-w-0 flex-1">
-          <p
-            className={`truncate text-sm font-medium ${
-              done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
-            }`}
+        {isHabit ? (
+          <button
+            type="button"
+            onClick={() => setSheetItem(item)}
+            title={t('habits.openHint')}
+            className="min-w-0 flex-1 text-left"
           >
-            {item.title}
-          </p>
-          {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
-        </div>
+            <p
+              className={`flex items-center gap-1 text-sm font-medium ${
+                done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
+              }`}
+            >
+              <span className="truncate">{item.title}</span>
+              <span className="shrink-0 text-xs">🔁</span>
+            </p>
+            {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <p
+              className={`truncate text-sm font-medium ${
+                done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
+              }`}
+            >
+              {item.title}
+            </p>
+            {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
+          </div>
+        )}
         {time && (
           <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{time}</span>
         )}
@@ -417,6 +452,16 @@ export default function PlannerToday() {
             <section className="flex flex-col gap-2">{items.map(renderTask)}</section>
           )}
         </>
+      )}
+
+      {sheetItem && user && (
+        <HabitSheet
+          userId={user.id}
+          item={sheetItem}
+          date={date}
+          onClose={() => setSheetItem(null)}
+          onChanged={reload}
+        />
       )}
     </div>
   )

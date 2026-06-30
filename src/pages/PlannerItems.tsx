@@ -10,27 +10,31 @@ import {
   createItem,
   updateItem,
   archiveItem,
-  todayStr,
   PRIORITY_DOT,
   type PlannerItem,
+  type PlannerType,
   type RepeatRule,
   type Priority,
   type TimeOfDay,
   type ItemInput,
 } from '../lib/planner'
 
-// Экран «Мои дела» (П-4): заведение, изменение и удаление дел с авто-повтором
-// (разовое, каждый день, будни, по выбранным дням недели), временем/интервалом,
-// важностью и секцией дня. Заведённые дела сами появляются в нужные дни на
-// экране «Сегодня». Привычки (со стриком) делаем отдельно на этапе П-5.
+// Экран «Мои дела»: единое место, где заводят и редактируют дела и привычки
+// (П-5, переделка под стиль Atoms). Это «склад/конструктор»: тут ТОЛЬКО
+// добавление, изменение и удаление. Отмечать выполнение и смотреть стрики/
+// историю привычки — на экране «Сегодня» (там по нажатию на привычку
+// открывается окно в стиле Atoms). В форме переключатель «Дело / Привычка»;
+// для привычки — конструктор-предложение «Я буду [действие], [когда и где],
+// чтобы стать [кем]» и версия на 2 минуты.
 
 const cardCls =
-  'rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50'
+  'rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900'
 const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-950'
 const labelCls = 'mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400'
 
 type FormState = {
+  type: PlannerType
   title: string
   note: string
   repeat_rule: RepeatRule
@@ -41,31 +45,37 @@ type FormState = {
   at_time_start: string
   at_time_end: string
   icon: string
+  cue: string
+  identity: string
+  two_min: string
 }
 
-const emptyForm = (): FormState => ({
+const emptyForm: FormState = {
+  type: 'task',
   title: '',
   note: '',
   repeat_rule: 'none',
   weekdays: [],
-  start_date: todayStr(),
+  start_date: '',
   priority: 'none',
   time_of_day: null,
   at_time_start: '',
   at_time_end: '',
   icon: '',
-})
+  cue: '',
+  identity: '',
+  two_min: '',
+}
 
 export default function PlannerItems() {
   const { user } = useAuth()
   const { t, lang } = useLang()
-
   const [items, setItems] = useState<PlannerItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm())
+  const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [delItem, setDelItem] = useState<PlannerItem | null>(null)
 
@@ -74,52 +84,47 @@ export default function PlannerItems() {
       ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
       : ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-  useEffect(() => {
+  const loadAll = async () => {
     if (!user) return
-    let active = true
-    ;(async () => {
-      try {
-        setLoading(true)
-        const data = await loadAllItems(user.id)
-        if (!active) return
-        setItems(data)
-        setError(null)
-      } catch (e) {
-        if (active) setError((e as Error).message)
-      } finally {
-        if (active) setLoading(false)
-      }
-    })()
-    return () => {
-      active = false
+    try {
+      setLoading(true)
+      const list = await loadAllItems(user.id)
+      setItems(list)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
     }
-  }, [user])
-
-  const reload = async () => {
-    if (!user) return
-    const data = await loadAllItems(user.id)
-    setItems(data)
   }
+
+  useEffect(() => {
+    loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   const openAdd = () => {
     setEditId(null)
-    setForm(emptyForm())
+    setForm(emptyForm)
     setShowForm(true)
   }
 
   const openEdit = (it: PlannerItem) => {
     setEditId(it.id)
     setForm({
+      type: it.type,
       title: it.title,
       note: it.note ?? '',
       repeat_rule: it.repeat_rule,
       weekdays: it.weekdays ?? [],
-      start_date: it.start_date ?? todayStr(),
+      start_date: it.start_date ?? '',
       priority: it.priority,
       time_of_day: it.time_of_day,
       at_time_start: it.at_time_start ?? '',
       at_time_end: it.at_time_end ?? '',
       icon: it.icon ?? '',
+      cue: it.cue ?? '',
+      identity: it.identity ?? '',
+      two_min: it.two_min ?? '',
     })
     setShowForm(true)
   }
@@ -127,7 +132,17 @@ export default function PlannerItems() {
   const cancel = () => {
     setShowForm(false)
     setEditId(null)
-    setForm(emptyForm())
+    setForm(emptyForm)
+    setError('')
+  }
+
+  // При смене типа на «Привычка» разовое повторение не подходит — ставим «каждый день».
+  const setType = (type: PlannerType) => {
+    setForm((f) => ({
+      ...f,
+      type,
+      repeat_rule: type === 'habit' && f.repeat_rule === 'none' ? 'daily' : f.repeat_rule,
+    }))
   }
 
   const toggleWeekday = (d: number) => {
@@ -135,42 +150,46 @@ export default function PlannerItems() {
       ...f,
       weekdays: f.weekdays.includes(d)
         ? f.weekdays.filter((x) => x !== d)
-        : [...f.weekdays, d].sort((a, b) => a - b),
+        : [...f.weekdays, d].sort(),
     }))
   }
 
   const submit = async () => {
     if (!user) return
+    const isHabit = form.type === 'habit'
     if (!form.title.trim()) {
-      setError(t('items.errTitle'))
+      setError(isHabit ? t('items.errHabitTitle') : t('items.errTitle'))
       return
     }
     if (form.repeat_rule === 'weekly' && form.weekdays.length === 0) {
       setError(t('items.errWeekdays'))
       return
     }
-    const input: ItemInput = {
-      title: form.title.trim(),
-      note: form.note.trim() || null,
-      type: 'task',
-      repeat_rule: form.repeat_rule,
-      weekdays: form.weekdays,
-      time_of_day: form.time_of_day,
-      at_time_start: form.at_time_start || null,
-      at_time_end: form.at_time_end || null,
-      priority: form.priority,
-      start_date: form.start_date || todayStr(),
-      icon: form.icon.trim() || null,
-    }
+    setError('')
+    setSaving(true)
     try {
-      setSaving(true)
+      const input: ItemInput = {
+        type: form.type,
+        title: form.title.trim(),
+        note: form.note.trim() || null,
+        repeat_rule: form.repeat_rule,
+        weekdays: form.repeat_rule === 'weekly' ? form.weekdays : null,
+        start_date: form.start_date || null,
+        priority: form.priority,
+        time_of_day: form.time_of_day,
+        at_time_start: form.at_time_start || null,
+        at_time_end: form.at_time_end || null,
+        icon: form.icon.trim() || null,
+        cue: isHabit ? form.cue.trim() || null : null,
+        identity: isHabit ? form.identity.trim() || null : null,
+        two_min: isHabit ? form.two_min.trim() || null : null,
+      }
       if (editId) await updateItem(user.id, editId, input)
       else await createItem(user.id, input)
-      await reload()
       cancel()
-      setError(null)
+      await loadAll()
     } catch (e) {
-      setError((e as Error).message)
+      setError((e as Error).message || t('common.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -181,10 +200,9 @@ export default function PlannerItems() {
     try {
       await archiveItem(user.id, delItem.id)
       setDelItem(null)
-      await reload()
+      await loadAll()
     } catch (e) {
       setError((e as Error).message)
-      setDelItem(null)
     }
   }
 
@@ -197,71 +215,135 @@ export default function PlannerItems() {
       case 'weekly':
         return (it.weekdays ?? []).map((d) => WEEKDAYS[d - 1]).join(', ')
       default:
-        return it.start_date ?? ''
+        return it.start_date ? it.start_date : t('items.repeatNone')
     }
   }
 
   const timeLabel = (it: PlannerItem): string => {
     if (it.at_time_start && it.at_time_end) return `${it.at_time_start}\u2013${it.at_time_end}`
     if (it.at_time_start) return it.at_time_start
+    if (it.time_of_day === 'morning') return t('items.secMorning')
+    if (it.time_of_day === 'day') return t('items.secDay')
+    if (it.time_of_day === 'evening') return t('items.secEvening')
     return ''
   }
 
-  const repeatOptions = [
-    { value: 'none', label: t('items.repeatNone') },
-    { value: 'daily', label: t('items.repeatDaily') },
-    { value: 'weekdays', label: t('items.repeatWeekdays') },
-    { value: 'weekly', label: t('items.repeatWeekly') },
-  ]
-  const priorityOptions = [
-    { value: 'none', label: t('items.prioNone') },
-    { value: 'high', label: t('items.prioHigh') },
-    { value: 'medium', label: t('items.prioMedium') },
-    { value: 'low', label: t('items.prioLow') },
-  ]
-  const sectionOptions = [
-    { value: 'none', label: t('items.secNone') },
-    { value: 'morning', label: t('items.secMorning') },
-    { value: 'day', label: t('items.secDay') },
-    { value: 'evening', label: t('items.secEvening') },
-  ]
+  const isHabitForm = form.type === 'habit'
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">🗂️ {t('pnav.items')}</h1>
+    <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">{t('pnav.items')}</h1>
         {!showForm && (
           <button
             type="button"
             onClick={openAdd}
-            className="shrink-0 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400"
+            className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400"
           >
             {t('items.add')}
           </button>
         )}
       </div>
 
-      {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
-
       {showForm && (
-        <div className={`${cardCls} animate-pop flex flex-col gap-4`}>
-          <p className="text-sm font-semibold">
-            {editId ? t('items.editTitle') : t('items.newTitle')}
-          </p>
+        <div className={`${cardCls} animate-pop flex flex-col gap-3`}>
+          <h2 className="text-base font-semibold">
+            {editId
+              ? isHabitForm
+                ? t('items.editHabit')
+                : t('items.editTitle')
+              : isHabitForm
+                ? t('items.newHabit')
+                : t('items.newTitle')}
+          </h2>
+
+          {/* Переключатель Дело / Привычка */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setType('task')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                !isHabitForm
+                  ? 'bg-emerald-500 text-neutral-950'
+                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+              }`}
+            >
+              {t('items.typeTask')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setType('habit')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                isHabitForm
+                  ? 'bg-emerald-500 text-neutral-950'
+                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+              }`}
+            >
+              🔁 {t('items.typeHabit')}
+            </button>
+          </div>
 
           <div>
-            <label className={labelCls}>{t('items.name')}</label>
+            <label className={labelCls}>{isHabitForm ? t('items.habitName') : t('items.name')}</label>
             <input
               className={inputCls}
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder={t('items.namePh')}
-              autoFocus
+              placeholder={isHabitForm ? t('items.habitNamePh') : t('items.namePh')}
             />
           </div>
 
+          {/* Конструктор-предложение для привычки */}
+          {isHabitForm && (
+            <>
+              <div>
+                <label className={labelCls}>{t('items.when')}</label>
+                <input
+                  className={inputCls}
+                  value={form.cue}
+                  onChange={(e) => setForm((f) => ({ ...f, cue: e.target.value }))}
+                  placeholder={t('items.whenPh')}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>{t('items.identity')}</label>
+                <input
+                  className={inputCls}
+                  value={form.identity}
+                  onChange={(e) => setForm((f) => ({ ...f, identity: e.target.value }))}
+                  placeholder={t('items.identityPh')}
+                />
+              </div>
+              <div className="rounded-lg bg-neutral-50 p-3 text-sm dark:bg-neutral-800/40">
+                {t('items.sentenceWill')}{' '}
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                  {form.title.trim() || t('items.phAction')}
+                </span>
+                {', '}
+                <span className="font-medium text-violet-600 dark:text-violet-400">
+                  {form.cue.trim() || t('items.phWhen')}
+                </span>
+                {', '}
+                {t('items.sentenceBecome')}{' '}
+                <span className="font-medium text-amber-600 dark:text-amber-400">
+                  {form.identity.trim() || t('items.phIdentity')}
+                </span>
+                {'.'}
+              </div>
+              <div>
+                <label className={labelCls}>{t('items.twoMin')}</label>
+                <input
+                  className={inputCls}
+                  value={form.two_min}
+                  onChange={(e) => setForm((f) => ({ ...f, two_min: e.target.value }))}
+                  placeholder={t('items.twoMinPh')}
+                />
+              </div>
+            </>
+          )}
+
           <div>
-            <label className={labelCls}>{t('common.descOptional')}</label>
+            <label className={labelCls}>{t('items.notePh')}</label>
             <input
               className={inputCls}
               value={form.note}
@@ -270,41 +352,36 @@ export default function PlannerItems() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>{t('items.repeat')}</label>
-              <Select
-                value={form.repeat_rule}
-                options={repeatOptions}
-                onChange={(v) => setForm((f) => ({ ...f, repeat_rule: v as RepeatRule }))}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>{t('items.priority')}</label>
-              <Select
-                value={form.priority}
-                options={priorityOptions}
-                onChange={(v) => setForm((f) => ({ ...f, priority: v as Priority }))}
-              />
-            </div>
+          <div>
+            <label className={labelCls}>{t('items.repeat')}</label>
+            <Select
+              value={form.repeat_rule}
+              onChange={(v) => setForm((f) => ({ ...f, repeat_rule: v as RepeatRule }))}
+              options={[
+                ...(isHabitForm ? [] : [{ value: 'none', label: t('items.repeatNone') }]),
+                { value: 'daily', label: t('items.repeatDaily') },
+                { value: 'weekdays', label: t('items.repeatWeekdays') },
+                { value: 'weekly', label: t('items.repeatWeekly') },
+              ]}
+            />
           </div>
 
           {form.repeat_rule === 'weekly' && (
             <div>
               <label className={labelCls}>{t('items.weekdays')}</label>
-              <div className="flex flex-wrap gap-2">
-                {WEEKDAYS.map((w, i) => {
-                  const d = i + 1
+              <div className="flex flex-wrap gap-1.5">
+                {WEEKDAYS.map((w, idx) => {
+                  const d = idx + 1
                   const on = form.weekdays.includes(d)
                   return (
                     <button
-                      key={d}
+                      key={w}
                       type="button"
                       onClick={() => toggleWeekday(d)}
-                      className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                      className={`h-9 w-9 rounded-lg text-xs font-medium transition ${
                         on
-                          ? 'bg-emerald-500 font-medium text-neutral-950'
-                          : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                          ? 'bg-emerald-500 text-neutral-950'
+                          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
                       }`}
                     >
                       {w}
@@ -315,27 +392,57 @@ export default function PlannerItems() {
             </div>
           )}
 
+          {form.repeat_rule === 'none' && !isHabitForm && (
+            <div>
+              <label className={labelCls}>{t('items.startDate')}</label>
+              <DatePicker
+                value={form.start_date}
+                onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+              />
+            </div>
+          )}
+
+          {(form.repeat_rule !== 'none' || isHabitForm) && (
+            <div>
+              <label className={labelCls}>{t('items.startFrom')}</label>
+              <DatePicker
+                value={form.start_date}
+                onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+              />
+            </div>
+          )}
+
           <div>
-            <label className={labelCls}>
-              {form.repeat_rule === 'none' ? t('items.startDate') : t('items.startFrom')}
-            </label>
-            <DatePicker
-              value={form.start_date}
-              onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
+            <label className={labelCls}>{t('items.priority')}</label>
+            <Select
+              value={form.priority}
+              onChange={(v) => setForm((f) => ({ ...f, priority: v as Priority }))}
+              options={[
+                { value: 'none', label: t('items.prioNone') },
+                { value: 'low', label: t('items.prioLow') },
+                { value: 'medium', label: t('items.prioMedium') },
+                { value: 'high', label: t('items.prioHigh') },
+              ]}
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <label className={labelCls}>{t('items.section')}</label>
-              <Select
-                value={form.time_of_day ?? 'none'}
-                options={sectionOptions}
-                onChange={(v) =>
-                  setForm((f) => ({ ...f, time_of_day: v === 'none' ? null : (v as TimeOfDay) }))
-                }
-              />
-            </div>
+          <div>
+            <label className={labelCls}>{t('items.section')}</label>
+            <Select
+              value={form.time_of_day ?? 'none'}
+              onChange={(v) =>
+                setForm((f) => ({ ...f, time_of_day: v === 'none' ? null : (v as TimeOfDay) }))
+              }
+              options={[
+                { value: 'none', label: t('items.secNone') },
+                { value: 'morning', label: t('items.secMorning') },
+                { value: 'day', label: t('items.secDay') },
+                { value: 'evening', label: t('items.secEvening') },
+              ]}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>{t('items.timeStart')}</label>
               <input
@@ -359,23 +466,16 @@ export default function PlannerItems() {
           <div>
             <label className={labelCls}>{t('items.icon')}</label>
             <input
-              className={`${inputCls} w-24`}
+              className={inputCls}
               value={form.icon}
               onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
-              placeholder="📚"
-              maxLength={2}
+              placeholder="📖"
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={submit}
-              disabled={saving}
-              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-60"
-            >
-              {saving ? t('common.saving') : t('items.save')}
-            </button>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={cancel}
@@ -383,42 +483,80 @@ export default function PlannerItems() {
             >
               {t('common.cancel')}
             </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={submit}
+              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-60"
+            >
+              {saving ? t('common.saving') : t('items.save')}
+            </button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('items.empty')}</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
+      ) : items.length === 0 && !showForm ? (
+        <p className="rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+          {t('items.empty')}
+        </p>
       ) : (
-        <section className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2">
           {items.map((it) => {
             const dot = PRIORITY_DOT[it.priority]
             const time = timeLabel(it)
+            const isHabitItem = it.type === 'habit'
             return (
-              <div key={it.id} className={`flex items-center gap-3 ${cardCls}`}>
-                {dot && <span className="shrink-0 text-xs leading-none">{dot}</span>}
+              <div key={it.id} className={`flex items-start gap-3 ${cardCls}`}>
+                {dot && <span className="mt-0.5 shrink-0 text-xs leading-none">{dot}</span>}
                 {it.icon && <span className="shrink-0">{it.icon}</span>}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{it.title}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-sm font-medium">{it.title}</p>
+                    {isHabitItem && (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        🔁 {t('items.typeHabit')}
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
                     {describeRepeat(it)}
                     {time ? ` · ${time}` : ''}
                   </p>
+                  {isHabitItem && it.identity && (
+                    <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
+                      {t('items.sentenceBecomeShort')} {it.identity}
+                    </p>
+                  )}
+                  {it.note && (
+                    <p className="mt-0.5 truncate text-xs text-neutral-400">{it.note}</p>
+                  )}
                 </div>
-                <IconButton icon="edit" title={t('common.edit')} onClick={() => openEdit(it)} />
-                <IconButton icon="delete" title={t('common.delete')} onClick={() => setDelItem(it)} />
+                <div className="flex shrink-0 gap-1">
+                  <IconButton icon="edit" title={t('common.edit')} onClick={() => openEdit(it)} />
+                  <IconButton
+                    icon="delete"
+                    title={t('common.delete')}
+                    onClick={() => setDelItem(it)}
+                  />
+                </div>
               </div>
             )
           })}
-        </section>
+        </div>
       )}
 
       <ConfirmDialog
         open={!!delItem}
-        title={t('items.deleteTitle')}
-        message={delItem ? t('items.deleteMsg', { n: delItem.title }) : ''}
+        title={delItem?.type === 'habit' ? t('items.deleteHabitTitle') : t('items.deleteTitle')}
+        message={
+          delItem
+            ? delItem.type === 'habit'
+              ? t('items.deleteHabitMsg', { n: delItem.title })
+              : t('items.deleteMsg', { n: delItem.title })
+            : ''
+        }
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         danger

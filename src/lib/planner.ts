@@ -46,6 +46,10 @@ export type PlannerItem = {
   color: string | null
   archived: boolean
   sort_order: number
+  // поля привычек (по «Атомным привычкам»), значимы только для type='habit'
+  cue: string | null
+  identity: string | null
+  two_min: string | null
 }
 
 export type PlannerLog = {
@@ -59,7 +63,7 @@ export type PlannerLog = {
 
 // Набор колонок для запросов (держим в одном месте, чтобы не расходились).
 export const ITEM_COLS =
-  'id, title, note, type, repeat_rule, weekdays, time_of_day, at_time_start, at_time_end, priority, start_date, icon, color, archived, sort_order'
+  'id, title, note, type, repeat_rule, weekdays, time_of_day, at_time_start, at_time_end, priority, start_date, icon, color, archived, sort_order, cue, identity, two_min'
 export const LOG_COLS = 'id, item_id, date, status, value, note'
 
 // Эмодзи-кружок важности для UI. Для none -- пусто.
@@ -270,6 +274,10 @@ export type ItemInput = {
   priority: Priority
   start_date: string
   icon: string | null
+  // поля привычек (только для type='habit'; для обычных дел остаются пустыми)
+  cue?: string | null
+  identity?: string | null
+  two_min?: string | null
 }
 
 // Загружает все НЕ архивированные дела пользователя (для списка «Мои дела»).
@@ -299,6 +307,10 @@ function itemRow(input: ItemInput) {
     priority: input.priority,
     start_date: input.start_date || todayStr(),
     icon: input.icon,
+    // поля привычек: для обычных дел приходят пустыми -> null
+    cue: input.cue ?? null,
+    identity: input.identity ?? null,
+    two_min: input.two_min ?? null,
   }
 }
 
@@ -336,6 +348,338 @@ export async function archiveItem(userId: string, id: string): Promise<void> {
   const { error } = await supabase
     .from('planner_items')
     .update({ archived: true })
+    .eq('user_id', userId)
+    .eq('id', id)
+  if (error) throw error
+}
+
+// ====================================================================
+// Привычки (П-5, по «Атомным привычкам»): отметка статуса за день,
+// загрузка привычек со стриками и расчёт стрика.
+// Правило стрика (выбрано пользователем):
+//   done -> сделано, наращивает стрик 🔥
+//   skip -> осознанный пропуск: ЗАМОРАЖИВАЕТ стрик (не рвёт, но и не растит)
+//   прошедший запланированный день без отметки -> стрик обнуляется
+//   сегодня без отметки -> день ещё не закрыт, стрик не рвётся
+//   после пропуска показываем предупреждение «не пропускай дважды»
+// ====================================================================
+
+export type HabitChainCell = {
+  date: string
+  status: 'done' | 'skip' | 'miss' | 'pending'
+}
+
+export type HabitStats = {
+  item: PlannerItem
+  current: number // текущий стрик
+  best: number // лучший стрик
+  pct: number // % выполнения за последние 30 запланированных дней
+  todayStatus: LogStatus | null
+  todayScheduled: boolean
+  warnNeverTwice: boolean // показать предупреждение «не пропускай дважды»
+  chain: HabitChainCell[] // последние ~14 запланированных дней (старые слева)
+}
+
+// Запланированные даты привычки от endDate назад (новые первыми).
+function scheduledDatesDesc(item: PlannerItem, endDate: string, maxBack: number): string[] {
+  const dates: string[] = []
+  let d = endDate
+  for (let i = 0; i <= maxBack; i++) {
+    if (item.start_date && d < item.start_date) break
+    if (isItemOnDate(item, d)) dates.push(d)
+    d = addDays(d, -1)
+  }
+  return dates
+}
+
+// Считает стрик и статистику привычки по её отметкам (date -> status).
+function computeHabitStats(
+  item: PlannerItem,
+  statusByDate: Record<string, LogStatus>,
+): HabitStats {
+  const today = todayStr()
+  const dates = scheduledDatesDesc(item, today, 400) // новые первыми
+
+  // Текущий стрик: идём от сегодня назад.
+  let current = 0
+  for (const date of dates) {
+    const st = statusByDate[date]
+    if (st === 'done') {
+      current++
+      continue
+    }
+    if (st === 'skip') continue // заморозка
+    if (date === today) continue // сегодня ещё не закрыто -- не рвём
+    break // прошедший день без выполнения -> стрик кончился
+  }
+
+  // Лучший стрик: проходим от старых дней к новым.
+  let best = 0
+  let run = 0
+  for (let i = dates.length - 1; i >= 0; i--) {
+    const date = dates[i]
+    const st = statusByDate[date]
+    if (st === 'done') {
+      run++
+      if (run > best) best = run
+    } else if (st === 'skip') {
+      // заморозка: run сохраняется
+    } else if (date === today) {
+      // день не закрыт -- не сбрасываем
+    } else {
+      run = 0
+    }
+  }
+  if (current > best) best = current
+
+  // % за последние 30 запланированных дней (пропуски не штрафуют).
+  let done = 0
+  let missed = 0
+  for (const date of dates.slice(0, 30)) {
+    const st = statusByDate[date]
+    if (date === today && !st) continue // сегодня не закрыто
+    if (st === 'done') done++
+    else if (st === 'skip') continue
+    else missed++
+  }
+  const pct = done + missed > 0 ? Math.round((done / (done + missed)) * 100) : 0
+
+  // Цепочка последних 14 запланированных дней (старые слева).
+  const chain: HabitChainCell[] = dates
+    .slice(0, 14)
+    .reverse()
+    .map((date) => {
+      const st = statusByDate[date]
+      let status: HabitChainCell['status']
+      if (st === 'done') status = 'done'
+      else if (st === 'skip') status = 'skip'
+      else if (date === today) status = 'pending'
+      else status = 'miss'
+      return { date, status }
+    })
+
+  // «Не пропускай дважды»: прошлый запланированный день не сделан, сегодня
+  // запланировано и пока не отмечено выполненным.
+  const todayScheduled = dates.includes(today)
+  const todayStatus = statusByDate[today] ?? null
+  const prevDate = dates.find((d) => d < today)
+  const prevMissed = prevDate ? statusByDate[prevDate] !== 'done' : false
+  const warnNeverTwice = prevMissed && todayScheduled && todayStatus !== 'done'
+
+  return {
+    item,
+    current,
+    best,
+    pct,
+    todayStatus,
+    todayScheduled,
+    warnNeverTwice,
+    chain,
+  }
+}
+
+// Загружает привычки пользователя со статистикой стриков.
+export async function loadHabits(userId: string): Promise<HabitStats[]> {
+  const cutoff = addDays(todayStr(), -400)
+  const [itemsRes, logsRes] = await Promise.all([
+    supabase
+      .from('planner_items')
+      .select(ITEM_COLS)
+      .eq('user_id', userId)
+      .eq('type', 'habit')
+      .eq('archived', false)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('planner_logs')
+      .select(LOG_COLS)
+      .eq('user_id', userId)
+      .gte('date', cutoff),
+  ])
+  if (itemsRes.error) throw itemsRes.error
+  if (logsRes.error) throw logsRes.error
+
+  const habits = (itemsRes.data ?? []) as PlannerItem[]
+  const byItem = new Map<string, Record<string, LogStatus>>()
+  for (const l of (logsRes.data ?? []) as PlannerLog[]) {
+    let m = byItem.get(l.item_id)
+    if (!m) {
+      m = {}
+      byItem.set(l.item_id, m)
+    }
+    m[l.date] = l.status
+  }
+  return habits.map((h) => computeHabitStats(h, byItem.get(h.id) ?? {}))
+}
+
+// Ставит/снимает статус привычки за день (done/skip); null -> убрать отметку.
+export async function setHabitStatus(
+  userId: string,
+  itemId: string,
+  dateStr: string,
+  status: 'done' | 'skip' | null,
+): Promise<void> {
+  if (status === null) {
+    const { error } = await supabase
+      .from('planner_logs')
+      .delete()
+      .eq('user_id', userId)
+      .eq('item_id', itemId)
+      .eq('date', dateStr)
+    if (error) throw error
+    return
+  }
+  const { error } = await supabase
+    .from('planner_logs')
+    .upsert(
+      { user_id: userId, item_id: itemId, date: dateStr, status },
+      { onConflict: 'user_id,item_id,date' },
+    )
+  if (error) throw error
+}
+
+// ====================================================================
+// Детали привычки для окна в стиле Atoms (П-5, переделка):
+// полная карта отметок (для мини-календаря и редактирования истории),
+// всего повторений, стрик/рекорд, процент (недавно и за всё время),
+// и рефлексия (заметки о прогрессе).
+// ====================================================================
+
+export type HabitReflection = {
+  id: string
+  item_id: string
+  date: string
+  text: string
+}
+
+export type HabitDetail = {
+  item: PlannerItem
+  statusByDate: Record<string, LogStatus> // дата -> статус (для календаря/истории)
+  totalDone: number // всего выполнено (повторений)
+  current: number // текущий стрик
+  best: number // лучший стрик
+  pctRecent: number // % за последние 30 запланированных дней
+  pctAll: number // % за всё время
+  sinceDate: string // с какого дня считаем (старт привычки)
+  reflections: HabitReflection[]
+}
+
+// Полная статистика привычки за всё время (для окна привычки).
+function computeHabitDetail(
+  item: PlannerItem,
+  statusByDate: Record<string, LogStatus>,
+  reflections: HabitReflection[],
+): HabitDetail {
+  const today = todayStr()
+  const dates = scheduledDatesDesc(item, today, 1500) // новые первыми, за всё время
+
+  // Текущий стрик: от сегодня назад.
+  let current = 0
+  for (const date of dates) {
+    const st = statusByDate[date]
+    if (st === 'done') {
+      current++
+      continue
+    }
+    if (st === 'skip') continue
+    if (date === today) continue
+    break
+  }
+
+  // Лучший стрик: от старых дней к новым.
+  let best = 0
+  let run = 0
+  for (let i = dates.length - 1; i >= 0; i--) {
+    const date = dates[i]
+    const st = statusByDate[date]
+    if (st === 'done') {
+      run++
+      if (run > best) best = run
+    } else if (st === 'skip') {
+      // заморозка
+    } else if (date === today) {
+      // не закрыт
+    } else {
+      run = 0
+    }
+  }
+  if (current > best) best = current
+
+  // Проценты: недавно (30 дней) и за всё время (пропуски не штрафуют).
+  const ratio = (slice: string[]): number => {
+    let done = 0
+    let missed = 0
+    for (const date of slice) {
+      const st = statusByDate[date]
+      if (date === today && !st) continue
+      if (st === 'done') done++
+      else if (st === 'skip') continue
+      else missed++
+    }
+    return done + missed > 0 ? Math.round((done / (done + missed)) * 100) : 0
+  }
+  const pctRecent = ratio(dates.slice(0, 30))
+  const pctAll = ratio(dates)
+
+  // Всего повторений = число выполненных отметок.
+  let totalDone = 0
+  for (const d of Object.keys(statusByDate)) if (statusByDate[d] === 'done') totalDone++
+
+  const sinceDate = item.start_date ?? (dates.length ? dates[dates.length - 1] : today)
+
+  return {
+    item,
+    statusByDate,
+    totalDone,
+    current,
+    best,
+    pctRecent,
+    pctAll,
+    sinceDate,
+    reflections,
+  }
+}
+
+// Загружает все данные одной привычки для окна привычки.
+export async function loadHabitDetail(userId: string, itemId: string): Promise<HabitDetail> {
+  const [itemRes, logsRes, reflRes] = await Promise.all([
+    supabase
+      .from('planner_items')
+      .select(ITEM_COLS)
+      .eq('user_id', userId)
+      .eq('id', itemId)
+      .single(),
+    supabase.from('planner_logs').select(LOG_COLS).eq('user_id', userId).eq('item_id', itemId),
+    supabase
+      .from('planner_reflections')
+      .select('id, item_id, date, text')
+      .eq('user_id', userId)
+      .eq('item_id', itemId)
+      .order('date', { ascending: false }),
+  ])
+  if (itemRes.error) throw itemRes.error
+  if (logsRes.error) throw logsRes.error
+  if (reflRes.error) throw reflRes.error
+  const item = itemRes.data as PlannerItem
+  const statusByDate: Record<string, LogStatus> = {}
+  for (const l of (logsRes.data ?? []) as PlannerLog[]) statusByDate[l.date] = l.status
+  const reflections = (reflRes.data ?? []) as HabitReflection[]
+  return computeHabitDetail(item, statusByDate, reflections)
+}
+
+// Добавляет заметку-рефлексию о прогрессе привычки.
+export async function addReflection(userId: string, itemId: string, text: string): Promise<void> {
+  const { error } = await supabase
+    .from('planner_reflections')
+    .insert({ user_id: userId, item_id: itemId, date: todayStr(), text })
+  if (error) throw error
+}
+
+// Удаляет заметку-рефлексию.
+export async function deleteReflection(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('planner_reflections')
+    .delete()
     .eq('user_id', userId)
     .eq('id', id)
   if (error) throw error

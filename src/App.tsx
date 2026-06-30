@@ -50,7 +50,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/planner" element={<PlannerToday />} />
         <Route path="/planner/items" element={<PlannerItems />} />
-        <Route path="/planner/habits" element={<PlannerStub titleKey="pnav.habits" icon="⏰" />} />
+        <Route path="/planner/habits" element={<Navigate to="/planner/items" replace />} />
         <Route path="/planner/calendar" element={<PlannerStub titleKey="pnav.calendar" icon="🗓️" />} />
         <Route path="/planner/focus" element={<PlannerStub titleKey="pnav.focus" icon="🍅" />} />
         <Route path="/planner/stats" element={<PlannerStub titleKey="pnav.stats" icon="📊" />} />
