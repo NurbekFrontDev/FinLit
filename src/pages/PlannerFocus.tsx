@@ -177,8 +177,9 @@ export default function PlannerFocus() {
     endRef.current = null
     playPomoSound(settings.sound, settings.volume)
     if (mode === 'focus') {
-      const mins = settings.focusMin
-      if (user) {
+      const elapsedSec = Math.max(0, total - remaining)
+      const mins = Math.round(elapsedSec / 60)
+      if (user && mins > 0) {
         logPomodoro(user.id, {
           kind: 'focus',
           durationMin: mins,
@@ -193,10 +194,12 @@ export default function PlannerFocus() {
       setMode(next)
       setRemaining(durMin(next) * 60)
     } else {
-      if (user) {
+      const breakElapsed = Math.max(0, total - remaining)
+      const breakMins = Math.round(breakElapsed / 60)
+      if (user && breakMins > 0) {
         logPomodoro(user.id, {
           kind: mode,
-          durationMin: durMin(mode),
+          durationMin: breakMins,
           itemId: null,
           completed: true,
         }).catch(() => {})
@@ -401,7 +404,7 @@ export default function PlannerFocus() {
       {/* Кольцо таймера с жестовым управлением */}
       <div className={`${cardCls} flex flex-col items-center gap-4`}>
         <div
-          className="relative h-72 w-72 cursor-pointer touch-none select-none transition-transform duration-150 active:scale-95"
+          className="relative h-72 w-72 cursor-pointer touch-none select-none"
           role="button"
           tabIndex={0}
           aria-label={t('focus.tapHint')}
@@ -441,7 +444,7 @@ export default function PlannerFocus() {
             }`}
           >
             <div className="text-xs uppercase tracking-wide text-neutral-400">{phaseLabel}</div>
-            <div className="text-6xl font-bold tabular-nums">{mmss(remaining)}</div>
+            <div className="text-6xl font-bold tabular-nums transition-transform duration-150 active:scale-95">{mmss(remaining)}</div>
             <div className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
               {t('focus.cycleDots', { n: cycleNow, m: settings.cycles })}
             </div>
