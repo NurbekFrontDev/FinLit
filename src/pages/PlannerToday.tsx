@@ -435,11 +435,11 @@ export default function PlannerToday() {
         tabIndex={0}
         onClick={() => onToggle(item)}
         aria-label={item.title}
-        className={`flex cursor-pointer items-center gap-3 ${cardCls}${done ? ' opacity-60' : ''} transition active:scale-[.99]`}
+        className={`flex cursor-pointer items-start gap-2.5 ${cardCls}${done ? ' opacity-60' : ''} transition active:scale-[.99]`}
       >
         <span
           aria-hidden
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold transition ${
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold transition ${
             done
               ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
               : 'border-neutral-300 dark:border-neutral-600'
@@ -447,36 +447,35 @@ export default function PlannerToday() {
         >
           {done ? '\u2713' : ''}
         </span>
-        {dot && <span className="shrink-0 text-xs leading-none">{dot}</span>}
-        {item.important && <span className="shrink-0 text-xs leading-none">⭐</span>}
-        {item.icon && <span className="shrink-0">{item.icon}</span>}
+        {dot && <span className="mt-1 shrink-0 text-xs leading-none">{dot}</span>}
+        {item.important && <span className="mt-1 shrink-0 text-xs leading-none">⭐</span>}
+        {item.icon && <span className="mt-0.5 shrink-0">{item.icon}</span>}
         <div className="min-w-0 flex-1">
           <p
-            className={`flex items-center gap-1 break-words text-sm font-medium ${
+            className={`break-words text-sm font-medium ${
               done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
             }`}
           >
             <span className="break-words">{item.title}</span>
-            {isHabit && <span className="shrink-0 text-xs">🔁</span>}
+            {isHabit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSheetItem(item)
+                }}
+                title={t('habits.openHint')}
+                className="ml-1 align-middle text-xs text-neutral-400 transition hover:text-emerald-600 dark:hover:text-emerald-400"
+              >
+                🔁
+              </button>
+            )}
           </p>
+          {time && (
+            <p className="mt-0.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{time}</p>
+          )}
           {item.note && <p className="break-words text-xs text-neutral-500">{item.note}</p>}
         </div>
-        {time && (
-          <span className="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
-        )}
-        {isHabit && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setSheetItem(item)
-            }}
-            title={t('habits.openHint')}
-            className="shrink-0 rounded-md px-1.5 py-1 text-sm text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-          >
-            📊
-          </button>
-        )}
       </div>
     )
   }
@@ -948,28 +947,28 @@ export default function PlannerToday() {
             </>
           )}
 
-          {/* Прогресс-бар дня (внизу, как в старом приложении): взвешен по
-              приоритетам; тап открывает окно персонажа энергии. */}
+          {/* Прогресс-бар дня — закреплён внизу экрана и всегда виден.
+              Всё в одну строку: слева счётчик, по центру полоса, справа процент.
+              Тап открывает окно персонажа энергии. На телефоне приподнят над нижней
+              навигацией (bottom-16), на десктопе bottom-0. */}
           {total > 0 && (
             <button
               type="button"
               onClick={() => setEnergyOpen(true)}
-              className={`${cardCls} w-full cursor-pointer text-left transition hover:border-emerald-400 dark:hover:border-emerald-600`}
+              className="sticky bottom-16 z-10 -mx-4 mt-1 flex items-center gap-3 border-t border-neutral-200/70 bg-white/90 px-4 py-2.5 text-left backdrop-blur transition md:bottom-0 dark:border-neutral-800/70 dark:bg-neutral-950/90"
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">
-                  {dayEnergy.doneCount === total
-                    ? t('today.allDone')
-                    : t('today.progress', { done: dayEnergy.doneCount, total })}
-                </p>
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pct}%</span>
-              </div>
-              <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-                <div
-                  className={`h-full rounded-full ${barColor} transition-all duration-300`}
+              <span className="shrink-0 text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                {dayEnergy.doneCount === total
+                  ? t('today.allDone')
+                  : t('today.progress', { done: dayEnergy.doneCount, total })}
+              </span>
+              <span className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                <span
+                  className={`block h-full rounded-full ${barColor} transition-all duration-300`}
                   style={{ width: `${pct}%` }}
                 />
-              </div>
+              </span>
+              <span className="shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pct}%</span>
             </button>
           )}
         </>

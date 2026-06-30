@@ -56,6 +56,8 @@ export default function Incomes() {
   const [source, setSource] = useState('')
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
+  // Форма добавления по умолчанию свёрнута; раскрывается по нажатию.
+  const [formOpen, setFormOpen] = useState(false)
 
   const [editId, setEditId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
@@ -231,10 +233,28 @@ export default function Incomes() {
         <PeriodFilter onChange={setPeriod} />
       </div>
 
+      {!formOpen ? (
+        <button
+          type="button"
+          onClick={() => setFormOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+        >
+          <span>＋ {t('inc.addBtn')}</span>
+          <span className="text-neutral-400">▾</span>
+        </button>
+      ) : (
       <form
         onSubmit={addIncome}
         className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
       >
+        <button
+          type="button"
+          onClick={() => setFormOpen(false)}
+          className="flex items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+        >
+          <span>＋ {t('inc.addBtn')}</span>
+          <span className="text-neutral-400">▴</span>
+        </button>
         <input
           inputMode="decimal"
           value={amount}
@@ -266,6 +286,7 @@ export default function Incomes() {
           {busy ? t('common.saving') : t('inc.addBtn')}
         </button>
       </form>
+      )}
 
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>

@@ -76,6 +76,8 @@ export default function Expenses() {
   const [description, setDescription] = useState('')
   const [fromPot, setFromPot] = useState<'' | 'cushion' | 'free' | 'charity'>('')
   const [busy, setBusy] = useState(false)
+  // Форма добавления по умолчанию свёрнута; раскрывается по нажатию.
+  const [formOpen, setFormOpen] = useState(false)
 
   const [editId, setEditId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState('')
@@ -342,40 +344,60 @@ export default function Expenses() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="sticky top-0 z-20 -mx-4 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85">
-        <div className="inline-flex self-start rounded-xl border border-neutral-200 bg-neutral-100 p-1 dark:border-neutral-800 dark:bg-neutral-900/50">
-          <button type="button" onClick={() => setView('expenses')} className={tabCls(view === 'expenses')}>
-            🧾 {t('exp.title')}
-          </button>
-          <button type="button" onClick={() => setView('debts')} className={tabCls(view === 'debts')}>
-            💳 {t('debts.title')}
-          </button>
+      <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="inline-flex self-start rounded-xl border border-neutral-200 bg-neutral-100 p-1 dark:border-neutral-800 dark:bg-neutral-900/50">
+            <button type="button" onClick={() => setView('expenses')} className={tabCls(view === 'expenses')}>
+              🧾 {t('exp.title')}
+            </button>
+            <button type="button" onClick={() => setView('debts')} className={tabCls(view === 'debts')}>
+              💳 {t('debts.title')}
+            </button>
+          </div>
+          {view === 'expenses' && (
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+              <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                {t('exp.totalSpent')}{' '}
+                <b className="text-red-500 dark:text-red-400">{formatSum(realTotal)}</b>
+              </span>
+              {toSavings > 0 && (
+                <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {t('exp.totalToPots')}{' '}
+                  <b className="text-emerald-600 dark:text-emerald-400">{formatSum(toSavings)}</b>
+                </span>
+              )}
+            </div>
+          )}
         </div>
+        {view === 'expenses' && <PeriodFilter onChange={setPeriod} />}
       </div>
 
       {view === 'debts' ? (
         <Debts embedded />
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-            <span className="text-sm text-neutral-500 dark:text-neutral-400">
-              {t('exp.totalSpent')}{' '}
-              <b className="text-red-500 dark:text-red-400">{formatSum(realTotal)}</b>
-            </span>
-            {toSavings > 0 && (
-              <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                {t('exp.totalToPots')}{' '}
-                <b className="text-emerald-600 dark:text-emerald-400">{formatSum(toSavings)}</b>
-              </span>
-            )}
-          </div>
-
-          <PeriodFilter onChange={setPeriod} />
-
+          {!formOpen ? (
+            <button
+              type="button"
+              onClick={() => setFormOpen(true)}
+              className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+            >
+              <span>＋ {t('exp.addBtn')}</span>
+              <span className="text-neutral-400">▾</span>
+            </button>
+          ) : (
           <form
             onSubmit={addExpense}
             className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
           >
+            <button
+              type="button"
+              onClick={() => setFormOpen(false)}
+              className="flex items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+            >
+              <span>＋ {t('exp.addBtn')}</span>
+              <span className="text-neutral-400">▴</span>
+            </button>
             <input
               inputMode="decimal"
               value={amount}
@@ -454,6 +476,7 @@ export default function Expenses() {
               {busy ? t('common.saving') : t('exp.addBtn')}
             </button>
           </form>
+          )}
 
           {loading ? (
             <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>

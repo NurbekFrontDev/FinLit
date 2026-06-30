@@ -40,29 +40,16 @@ function App() {
   const didRestore = useRef(false)
   const userId = session?.user?.id
 
-  // Восстановление последней открытой страницы.
-  //   1) Мгновенно подставляем значение из localStorage (без мигания),
-  //      чтобы на этом устройстве всё работало надёжно в любом случае.
-  //   2) Затем берём значение из БД — это источник правды для
-  //      синхронизации между телефоном и компьютером.
+  // Восстановление последней открытой страницы — ИСТОЧНИК ПРАВДЫ ТОЛЬКО БАЗА
+  // ДАННЫХ (app_settings.last_path). localStorage больше НЕ используется: это
+  // даёт одинаковое поведение на телефоне и компьютере и убирает баг, когда
+  // мобильный браузер очищает локальное хранилище и вкладка не восстанавливалась.
   useEffect(() => {
     if (!userId) return
     // Только один раз за загрузку (см. комментарий к didRestore выше).
     if (didRestore.current) return
     didRestore.current = true
     let active = true
-    const key = `nucleus:last-path:${userId}`
-
-    let localPath = ''
-    try {
-      localPath = localStorage.getItem(key) || ''
-    } catch {
-      /* localStorage недоступен */
-    }
-    if (localPath && localPath !== '/login' && localPath !== '/' && window.location.pathname === '/') {
-      setLastPath(localPath)
-      navigate(localPath, { replace: true })
-    }
 
     ;(async () => {
       try {
@@ -78,11 +65,9 @@ function App() {
         const dbPath = (data as { last_path?: string } | null)?.last_path
         if (active && dbPath && dbPath !== '/login') {
           setLastPath(dbPath)
-          const here = window.location.pathname
-          // Переходим на значение из БД, если пользователь ещё никуда сам не ушёл
-          // (мы либо на '/', либо на локальном значении) — это даёт синхрон между устройствами.
-          const userMoved = here !== '/' && here !== localPath
-          if (dbPath !== here && !userMoved) {
+          // Восстанавливаем, только если пользователь ещё на корне и сам никуда
+          // не перешёл — иначе не мешаем его текущей навигации.
+          if (window.location.pathname === '/' && dbPath !== '/') {
             navigate(dbPath, { replace: true })
           }
         }
@@ -98,18 +83,13 @@ function App() {
     }
   }, [userId, navigate])
 
-  // После восстановления сохраняем текущую страницу: сразу в localStorage
-  // (мгновенно, это устройство) и в БД (синхрон между устройствами).
+  // После восстановления сохраняем текущую страницу ТОЛЬКО в БД (синхрон между
+  // устройствами). Локальное хранилище намеренно не трогаем.
   useEffect(() => {
     if (!restored || !userId) return
     const p = location.pathname
     if (p === '/login') return
     setLastPath(p)
-    try {
-      localStorage.setItem(`nucleus:last-path:${userId}`, p)
-    } catch {
-      /* игнорируем */
-    }
     void (async () => {
       const { error } = await supabase.from('app_settings').upsert(
         { user_id: userId, last_path: p, updated_at: new Date().toISOString() },
