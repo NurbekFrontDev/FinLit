@@ -53,8 +53,22 @@ const cellCls = (sel: boolean) =>
 export default function TimePicker({ value, onChange, placeholder }: Props) {
   const { lang } = useLang()
   const [open, setOpen] = useState(false)
+  const [alignRight, setAlignRight] = useState(false)
   const show = useAnimatedMount(open)
   const ref = useRef<HTMLDivElement>(null)
+
+  // При открытии выбираем сторону раскрытия так, чтобы поповер не вылезал за
+  // правый край экрана (важно для поля End time на телефоне — раньше резалось).
+  const toggleOpen = () => {
+    setOpen((v) => {
+      const next = !v
+      if (next && ref.current) {
+        const r = ref.current.getBoundingClientRect()
+        setAlignRight(r.left + 232 > window.innerWidth - 8)
+      }
+      return next
+    })
+  }
 
   const parsed = parse12(value)
   const curH12 = parsed?.h12 ?? null
@@ -77,7 +91,7 @@ export default function TimePicker({ value, onChange, placeholder }: Props) {
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} className={triggerCls}>
+      <button type="button" onClick={toggleOpen} className={triggerCls}>
         <span className={label ? '' : 'text-neutral-400'}>{label || placeholder || '--:-- --'}</span>
         <span className="shrink-0 text-neutral-400">🕒</span>
       </button>
@@ -85,7 +99,9 @@ export default function TimePicker({ value, onChange, placeholder }: Props) {
         <div
           className={`${
             open ? 'animate-pop' : 'animate-pop-out'
-          } absolute z-30 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
+          } ${
+            alignRight ? 'right-0' : 'left-0'
+          } absolute z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
         >
           <div className="flex gap-2">
             <div className="flex-1">

@@ -41,8 +41,8 @@ const navBtn =
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
 
-// Геометрия мини-кольца прогресса в ленте дней.
-const STRIP_R = 16
+// Геометрия кольца дня в ленте (внутри — краткое название дня недели).
+const STRIP_R = 21
 const STRIP_C = 2 * Math.PI * STRIP_R
 
 // Цвет полоски-метки в календаре: выполнено -> зелёный, иначе по важности дела.
@@ -800,7 +800,8 @@ export default function PlannerToday() {
         )
       )}
 
-      {/* Кольца дней с прогрессом — закреплены вместе с шапкой. */}
+      {/* Кольца дней: внутри кольца — краткое название дня недели; кольцо
+          заполняется по проценту выполнения за день. Закреплены с шапкой. */}
       {!isCalendar && (
         <div className="flex justify-between gap-1">
           {Array.from({ length: 7 }, (_, i) => {
@@ -819,41 +820,31 @@ export default function PlannerToday() {
                 key={dStr}
                 type="button"
                 onClick={() => setDate(dStr)}
-                className={`flex flex-1 flex-col items-center gap-1 rounded-2xl border py-1.5 transition ${
-                  sel
-                    ? 'border-emerald-500 bg-emerald-500/10'
-                    : isStripToday
-                      ? 'border-emerald-500/40'
-                      : 'border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                }`}
+                aria-label={WEEKDAYS[wd]}
+                className="flex flex-1 flex-col items-center"
               >
-                <span
-                  className={`text-[10px] font-medium uppercase ${
-                    sel || isStripToday
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-neutral-500 dark:text-neutral-400'
-                  }`}
-                >
-                  {WEEKDAYS[wd]}
-                </span>
-                <span className="relative flex h-9 w-9 items-center justify-center">
-                  <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full -rotate-90">
+                <span className="relative flex h-12 w-12 items-center justify-center">
+                  <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                     <circle
-                      cx="20"
-                      cy="20"
+                      cx="24"
+                      cy="24"
                       r={STRIP_R}
                       fill="none"
-                      strokeWidth="4"
-                      className="text-neutral-200 dark:text-neutral-800"
+                      strokeWidth="3.5"
+                      className={
+                        sel
+                          ? 'text-emerald-500/25 dark:text-emerald-500/20'
+                          : 'text-neutral-200 dark:text-neutral-800'
+                      }
                       stroke="currentColor"
                     />
                     {ringPct > 0 && (
                       <circle
-                        cx="20"
-                        cy="20"
+                        cx="24"
+                        cy="24"
                         r={STRIP_R}
                         fill="none"
-                        strokeWidth="4"
+                        strokeWidth="3.5"
                         strokeLinecap="round"
                         className="text-emerald-500 transition-[stroke-dashoffset] duration-300"
                         stroke="currentColor"
@@ -863,11 +854,13 @@ export default function PlannerToday() {
                     )}
                   </svg>
                   <span
-                    className={`relative text-sm font-semibold ${
-                      sel ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-700 dark:text-neutral-200'
+                    className={`relative text-[11px] font-bold uppercase tracking-tight ${
+                      sel || isStripToday
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-neutral-600 dark:text-neutral-300'
                     }`}
                   >
-                    {dt.getDate()}
+                    {WEEKDAYS[wd]}
                   </span>
                 </span>
               </button>
@@ -912,32 +905,6 @@ export default function PlannerToday() {
       ) : (
         // ===== Вид «Сегодня» =====
         <>
-          {/* Прогресс-бар дня: взвешенный по приоритетам (энергия).
-              Тап открывает окно персонажа энергии. */}
-          {total > 0 && (
-            <button
-              type="button"
-              onClick={() => setEnergyOpen(true)}
-              className={`${cardCls} w-full cursor-pointer text-left transition hover:border-emerald-400 dark:hover:border-emerald-600`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">
-                  {dayEnergy.doneCount === total
-                    ? t('today.allDone')
-                    : t('today.progress', { done: dayEnergy.doneCount, total })}
-                </p>
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pct}%</span>
-              </div>
-              <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-                <div
-                  className={`h-full rounded-full ${barColor} transition-all duration-300`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-
-            </button>
-          )}
-
           {loading ? (
             <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
           ) : items.length === 0 ? (
@@ -979,6 +946,31 @@ export default function PlannerToday() {
                 <section className="flex flex-col gap-2">{items.map(renderTask)}</section>
               )}
             </>
+          )}
+
+          {/* Прогресс-бар дня (внизу, как в старом приложении): взвешен по
+              приоритетам; тап открывает окно персонажа энергии. */}
+          {total > 0 && (
+            <button
+              type="button"
+              onClick={() => setEnergyOpen(true)}
+              className={`${cardCls} w-full cursor-pointer text-left transition hover:border-emerald-400 dark:hover:border-emerald-600`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">
+                  {dayEnergy.doneCount === total
+                    ? t('today.allDone')
+                    : t('today.progress', { done: dayEnergy.doneCount, total })}
+                </p>
+                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pct}%</span>
+              </div>
+              <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                <div
+                  className={`h-full rounded-full ${barColor} transition-all duration-300`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </button>
           )}
         </>
       )}

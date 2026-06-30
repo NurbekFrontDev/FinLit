@@ -130,6 +130,9 @@ export default function PlannerFocus() {
   })
   const startRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const pressedRef = useRef(false)
+  // Таймер, удерживающий анимацию нажатия видимой хотя бы ~160 мс даже при
+  // быстром тапе (иначе scale возвращается мгновенно и анимации не видно).
+  const pressTimer = useRef<number | null>(null)
   const dialRef = useRef<{ active: boolean; dx: number; dy: number; dir: Dir }>({
     active: false,
     dx: 0,
@@ -171,6 +174,13 @@ export default function PlannerFocus() {
       active = false
     }
   }, [user])
+
+  // Очистка таймера анимации нажатия при размонтировании.
+  useEffect(() => {
+    return () => {
+      if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    }
+  }, [])
 
   // Логика завершения фазы (через ref, чтобы тик всегда видел свежие значения).
   completeRef.current = () => {
@@ -283,6 +293,7 @@ export default function PlannerFocus() {
     }
     startRef.current = { x: e.clientX, y: e.clientY }
     pressedRef.current = true
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
     setPressed(true)
     // Do NOT show the dial on press - only after a drag past deadzone.
     const next = { active: false, dx: 0, dy: 0, dir: null as Dir }
@@ -308,7 +319,8 @@ export default function PlannerFocus() {
       // noop
     }
     pressedRef.current = false
-    setPressed(false)
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressTimer.current = window.setTimeout(() => setPressed(false), 160)
     const d = dialRef.current
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
@@ -329,7 +341,8 @@ export default function PlannerFocus() {
   }
   const onDialCancel = () => {
     pressedRef.current = false
-    setPressed(false)
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressTimer.current = window.setTimeout(() => setPressed(false), 160)
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
     setDial(cleared)
@@ -384,7 +397,7 @@ export default function PlannerFocus() {
   }
   // Анимация нажатия применяется только к кругу (не во время жеста-«пульта»).
   const dialPressStyle: React.CSSProperties = {
-    transform: pressed && !dial.active ? 'scale(0.96)' : undefined,
+    transform: pressed && !dial.active ? 'scale(0.93)' : undefined,
   }
   const segCls = (dir: Dir): string =>
     `absolute flex flex-col items-center gap-0.5 text-2xl font-bold leading-none transition ${
