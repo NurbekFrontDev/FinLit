@@ -167,6 +167,19 @@ body {
     stroke 320ms ease !important;
 }
 
+/* Мягкое мигание таймера на паузе: плавный пульс яркости. */
+@keyframes fl-timer-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.animate-timer-pulse {
+  animation: fl-timer-pulse 2s ease-in-out infinite;
+}
+
 /* Уважение к системной настройке «уменьшить движение» */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -185,5 +198,8 @@ body {
   }
   button:active:not(:disabled) {
     transform: none;
+  }
+  .animate-timer-pulse {
+    animation: none;
   }
 }

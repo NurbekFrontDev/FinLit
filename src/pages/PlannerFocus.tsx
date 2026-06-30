@@ -292,12 +292,16 @@ export default function PlannerFocus() {
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
     setDial(cleared)
-    if (!d.active) return
-    if (d.dir === 'add') addMinute()
-    else if (d.dir === 'skip') cyclePhase(1)
-    else if (d.dir === 'back') cyclePhase(-1)
-    else if (d.dir === 'stop') stopAll()
-    else if (running) pause()
+    // If dial was shown (dragged past deadzone), perform the directional action.
+    if (d.active) {
+      if (d.dir === 'add') addMinute()
+      else if (d.dir === 'skip') cyclePhase(1)
+      else if (d.dir === 'back') cyclePhase(-1)
+      else if (d.dir === 'stop') stopAll()
+      return
+    }
+    // Otherwise it was a tap (no drag past deadzone) = toggle start/pause.
+    if (running) pause()
     else start()
   }
   const onDialCancel = () => {
@@ -423,7 +427,13 @@ export default function PlannerFocus() {
               strokeDashoffset={offset}
             />
           </svg>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <div
+            className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center ${
+              !running && remaining > 0 && remaining < durMin(mode) * 60
+                ? 'animate-timer-pulse'
+                : ''
+            }`}
+          >
             <div className="text-xs uppercase tracking-wide text-neutral-400">{phaseLabel}</div>
             <div className="text-6xl font-bold tabular-nums">{mmss(remaining)}</div>
             <div className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">

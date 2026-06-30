@@ -12,7 +12,7 @@ export default function Layout() {
   const activeModule = moduleForPath(location.pathname)
   const navItems = activeModule.nav
 
-  //Dynamic document title based on active route.
+  // Dynamic document title + scroll-to-top on route change.
   useEffect(() => {
     const path = location.pathname
     let titleKey = activeModule.nameKey
@@ -24,6 +24,7 @@ export default function Layout() {
       }
     }
     document.title = `${t(titleKey)} - Nucleus`
+    window.scrollTo(0, 0)
   }, [location.pathname, navItems])
 
   const moduleSwitcher = (
