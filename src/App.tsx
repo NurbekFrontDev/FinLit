@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
@@ -29,9 +29,11 @@ function NotFoundRedirect({ fallback }: { fallback: string }) {
 function App() {
   const { session, loading } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [lastPath, setLastPath] = useState('/')
+  const [restored, setRestored] = useState(false)
 
-  // Load last path from DB on session start (syncs across devices).
+  // Load last path from DB on session start and open it once (syncs across devices).
   useEffect(() => {
     if (!session?.user?.id) return
     let active = true
@@ -42,20 +44,26 @@ function App() {
         .eq('user_id', session.user.id)
         .maybeSingle()
       const v = (data as { last_path?: string } | null)?.last_path
-      if (active && v) setLastPath(v)
+      if (!active) return
+      if (v && v !== '/login') {
+        setLastPath(v)
+        if (location.pathname === '/') navigate(v, { replace: true })
+      }
+      setRestored(true)
     })()
     return () => { active = false }
   }, [session?.user?.id])
 
-  // Save last visited page to DB (syncs across devices).
+  // Save last visited page to DB after restore (syncs across devices).
   useEffect(() => {
+    if (!restored) return
     if (session?.user?.id && location.pathname !== '/login') {
       void supabase.from('app_settings').upsert(
         { user_id: session.user.id, last_path: location.pathname, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' },
       )
     }
-  }, [session?.user?.id, location.pathname])
+  }, [restored, session?.user?.id, location.pathname])
 
   if (loading) {
     return (

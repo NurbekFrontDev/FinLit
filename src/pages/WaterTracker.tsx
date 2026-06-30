@@ -5,6 +5,8 @@ import { addDays, todayStr } from '../lib/planner'
 import {
   loadWaterDay,
   saveWaterGoal,
+  loadWaterPortion,
+  saveWaterPortion,
   addWaterLog,
   removeWaterLog,
   loadWaterRange,
@@ -118,10 +120,14 @@ export default function WaterTracker() {
     setLoading(true)
     ;(async () => {
       try {
-        const d = await loadWaterDay(user.id, today)
+        const [d, portion] = await Promise.all([
+          loadWaterDay(user.id, today),
+          loadWaterPortion(user.id),
+        ])
         if (!active) return
         setDay(d)
         setGoalDraft(String(d.goal))
+        setSelMl(portion)
       } finally {
         if (active) setLoading(false)
       }
@@ -254,23 +260,9 @@ export default function WaterTracker() {
     }
   }
 
-  const removeLog = async (log: WaterLog) => {
-    if (!user) return
-    try {
-      await removeWaterLog(user.id, log.id)
-      setDay((prev) =>
-        prev
-          ? {
-              ...prev,
-              drunk: Math.max(0, prev.drunk - log.amount),
-              logs: prev.logs.filter((entry) => entry.id !== log.id),
-            }
-          : prev,
-      )
-      syncTrendToday(drunk - log.amount)
-    } catch {
-      /* ignore */
-    }
+  const chooseMl = (ml: number) => {
+    setSelMl(ml)
+    if (user) void saveWaterPortion(user.id, ml)
   }
 
   const saveGoal = async () => {
@@ -330,7 +322,7 @@ export default function WaterTracker() {
                 <button
                   key={ml}
                   type="button"
-                  onClick={() => setSelMl(ml)}
+                  onClick={() => chooseMl(ml)}
                   className={`shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                     selMl === ml
                       ? 'bg-sky-500 text-white shadow-md'
@@ -421,39 +413,48 @@ export default function WaterTracker() {
           </div>
 
           {goalEdit && (
-            <div className={`${cardCls} flex flex-col gap-2`}>
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                🎯 {t('water.dailyGoal')}
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={goalDraft}
-                  onChange={(e) => setGoalDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      saveGoal()
-                    }
-                  }}
-                  className="w-28 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 dark:border-neutral-700 dark:bg-neutral-950"
-                />
-                <span className="self-center text-sm text-neutral-400">ml</span>
-                <button
-                  type="button"
-                  onClick={saveGoal}
-                  className="cursor-pointer rounded-lg bg-sky-400 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-300"
-                >
-                  {t('common.save')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGoalEdit(false)}
-                  className="cursor-pointer rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-                >
-                  {t('common.cancel')}
-                </button>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+              onClick={() => setGoalEdit(false)}
+            >
+              <div
+                className="w-full max-w-xs rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="mb-3 text-base font-semibold">🎯 {t('water.dailyGoal')}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    autoFocus
+                    value={goalDraft}
+                    onChange={(e) => setGoalDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        saveGoal()
+                      }
+                    }}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 dark:border-neutral-700 dark:bg-neutral-950"
+                  />
+                  <span className="text-sm text-neutral-400">ml</span>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGoalEdit(false)}
+                    className="cursor-pointer rounded-lg border border-neutral-300 px-3 py-1.5 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveGoal}
+                    className="cursor-pointer rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-sky-400"
+                  >
+                    {t('common.save')}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -575,29 +576,6 @@ export default function WaterTracker() {
               </span>
             </div>
           </div>
-
-          {day && day.logs.length > 0 && (
-            <div className={`${cardCls} flex flex-col gap-2`}>
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                {t('water.todayLogs')}
-              </p>
-              {day.logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-center justify-between gap-3 rounded-lg bg-neutral-50 px-3 py-2 dark:bg-neutral-900/40"
-                >
-                  <span className="text-sm">+{log.amount} ml</span>
-                  <button
-                    type="button"
-                    onClick={() => removeLog(log)}
-                    className="cursor-pointer text-xs text-red-500 transition hover:text-red-400"
-                  >
-                    {t('common.delete')}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </>
       )}
     </div>

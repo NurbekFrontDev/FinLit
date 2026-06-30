@@ -38,6 +38,26 @@ export async function saveWaterGoal(userId: string, goal: number): Promise<void>
   )
 }
 
+const DEFAULT_PORTION = 250
+
+// Выбранный объём порции (мл) — хранится в app_settings и синхронизируется.
+export async function loadWaterPortion(userId: string): Promise<number> {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('water_portion')
+    .eq('user_id', userId)
+    .maybeSingle()
+  const v = (data as { water_portion?: number } | null)?.water_portion
+  return typeof v === 'number' && v > 0 ? v : DEFAULT_PORTION
+}
+
+export async function saveWaterPortion(userId: string, ml: number): Promise<void> {
+  await supabase.from('app_settings').upsert(
+    { user_id: userId, water_portion: ml, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' },
+  )
+}
+
 export async function loadWaterDay(userId: string, date: string): Promise<WaterDay> {
   const [goal, { data: logs }] = await Promise.all([
     loadWaterGoal(userId),
