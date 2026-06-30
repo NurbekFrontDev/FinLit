@@ -251,3 +251,92 @@ export async function saveDaySections(userId: string, value: boolean): Promise<v
       { onConflict: 'user_id' },
     )
 }
+
+// ====================================================================
+// CRUD дел (для экрана «Мои дела», П-4): создание, изменение, мягкое
+// удаление и загрузка полного списка дел пользователя.
+// ====================================================================
+
+// Поля, которые пользователь задаёт при создании/редактировании дела.
+export type ItemInput = {
+  title: string
+  note: string | null
+  type: PlannerType
+  repeat_rule: RepeatRule
+  weekdays: number[]
+  time_of_day: TimeOfDay
+  at_time_start: string | null
+  at_time_end: string | null
+  priority: Priority
+  start_date: string
+  icon: string | null
+}
+
+// Загружает все НЕ архивированные дела пользователя (для списка «Мои дела»).
+export async function loadAllItems(userId: string): Promise<PlannerItem[]> {
+  const { data, error } = await supabase
+    .from('planner_items')
+    .select(ITEM_COLS)
+    .eq('user_id', userId)
+    .eq('archived', false)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as PlannerItem[]
+}
+
+// Готовит строку для базы. weekdays нужны только для repeat_rule='weekly'.
+function itemRow(input: ItemInput) {
+  return {
+    title: input.title,
+    note: input.note,
+    type: input.type,
+    repeat_rule: input.repeat_rule,
+    weekdays: input.repeat_rule === 'weekly' ? input.weekdays : [],
+    time_of_day: input.time_of_day,
+    at_time_start: input.at_time_start,
+    at_time_end: input.at_time_end,
+    priority: input.priority,
+    start_date: input.start_date || todayStr(),
+    icon: input.icon,
+  }
+}
+
+// Создаёт новое дело и возвращает его.
+export async function createItem(userId: string, input: ItemInput): Promise<PlannerItem> {
+  const { data, error } = await supabase
+    .from('planner_items')
+    .insert({ user_id: userId, ...itemRow(input) })
+    .select(ITEM_COLS)
+    .single()
+  if (error) throw error
+  return data as PlannerItem
+}
+
+// Обновляет существующее дело и возвращает его.
+export async function updateItem(
+  userId: string,
+  id: string,
+  input: ItemInput,
+): Promise<PlannerItem> {
+  const { data, error } = await supabase
+    .from('planner_items')
+    .update(itemRow(input))
+    .eq('user_id', userId)
+    .eq('id', id)
+    .select(ITEM_COLS)
+    .single()
+  if (error) throw error
+  return data as PlannerItem
+}
+
+// Мягко удаляет дело (archived=true): оно пропадает из списков, но отметки
+// о выполнении в planner_logs остаются для истории и статистики.
+export async function archiveItem(userId: string, id: string): Promise<void> {
+  const { error } = await supabase
+    .from('planner_items')
+    .update({ archived: true })
+    .eq('user_id', userId)
+    .eq('id', id)
+  if (error) throw error
+}
