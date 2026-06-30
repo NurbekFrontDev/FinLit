@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
@@ -32,6 +32,12 @@ function App() {
   const navigate = useNavigate()
   const [lastPath, setLastPath] = useState('/')
   const [restored, setRestored] = useState(false)
+  // Восстановление последней вкладки должно срабатывать ТОЛЬКО один раз при
+  // загрузке. Иначе эффект перезапускается на каждой навигации (navigate из
+  // react-router меняет идентичность при смене маршрута), и любой переход на '/'
+  // (например клик по вкладке FinLit) мгновенно отбрасывает обратно на
+  // сохранённый путь — из-за этого "не переключается".
+  const didRestore = useRef(false)
   const userId = session?.user?.id
 
   // Восстановление последней открытой страницы.
@@ -41,6 +47,9 @@ function App() {
   //      синхронизации между телефоном и компьютером.
   useEffect(() => {
     if (!userId) return
+    // Только один раз за загрузку (см. комментарий к didRestore выше).
+    if (didRestore.current) return
+    didRestore.current = true
     let active = true
     const key = `nucleus:last-path:${userId}`
 
