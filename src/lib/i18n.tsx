@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { supabase } from './supabase'
 import { setDbLang } from './db'
 
 export type Lang = 'ru' | 'en'
@@ -24,6 +25,38 @@ function getInitial(): Lang {
 // Синхронный модульный флаг языка — чтобы tr()/месяцы работали и вне React.
 let currentLang: Lang = getInitial()
 setDbLang(currentLang)
+
+// ===== Синхронизация языка с облаком (app_settings) =====
+// Сохраняет выбранный язык в app_settings.user_lang, чтобы он
+// синхронизировался между всеми устройствами пользователя.
+export async function saveUserLangToCloud(userId: string, lang: Lang): Promise<void> {
+  try {
+    await supabase
+      .from('app_settings')
+      .upsert(
+        { user_id: userId, user_lang: lang, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      )
+  } catch {
+    // не критично — локально всё равно работает
+  }
+}
+
+// Загружает язык из облака. Если в БД есть запись — она приоритетнее localStorage.
+export async function loadUserLangFromCloud(userId: string): Promise<Lang | null> {
+  try {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('user_lang')
+      .eq('user_id', userId)
+      .maybeSingle()
+    const v = (data as { user_lang?: string } | null)?.user_lang
+    if (v === 'ru' || v === 'en') return v
+  } catch {
+    // не критично
+  }
+  return null
+}
 
 // ===== UI-строки (ключ → перевод) =====
 const UI: Record<Lang, Record<string, string>> = {
@@ -176,6 +209,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'today.day': 'День',
     'today.evening': 'Вечер',
     'today.noTime': 'Без времени',
+    'today.allday': 'Весь день',
     'today.reorderHint': 'Перетащи, чтобы изменить порядок',
 
     'energy.label': 'энергия дня',
@@ -211,6 +245,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'items.secMorning': 'Утро',
     'items.secDay': 'День',
     'items.secEvening': 'Вечер',
+    'items.secAllDay': 'Весь день',
     'items.timeStart': 'Время начала',
     'items.timeEnd': 'Время конца',
     'items.icon': 'Значок (эмодзи, необязательно)',
@@ -926,6 +961,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'today.day': 'Day',
     'today.evening': 'Evening',
     'today.noTime': 'No time',
+    'today.allday': 'All day',
     'today.reorderHint': 'Drag to reorder',
 
     'energy.label': 'day energy',
@@ -961,6 +997,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'items.secMorning': 'Morning',
     'items.secDay': 'Day',
     'items.secEvening': 'Evening',
+    'items.secAllDay': 'All day',
     'items.timeStart': 'Start time',
     'items.timeEnd': 'End time',
     'items.icon': 'Icon (emoji, optional)',
@@ -1669,7 +1706,6 @@ function interpolate(s: string, vars?: Record<string, string | number>) {
   for (const k of Object.keys(vars)) out = out.replace('{' + k + '}', String(vars[k]))
   return out
 }
-
 export function translate(lang: Lang, key: string, vars?: Record<string, string | number>) {
   const s = UI[lang][key] ?? UI.ru[key] ?? key
   return interpolate(s, vars)
@@ -1693,6 +1729,47 @@ const LangContext = createContext<Ctx | undefined>(undefined)
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(currentLang)
+  const [cloudUserId, setCloudUserId] = useState<string | null>(null)
+  const [cloudReady, setCloudReady] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    const syncFromSession = async (userId: string | null) => {
+      if (!active) return
+      setCloudUserId(userId)
+
+      if (!userId) {
+        setCloudReady(true)
+        return
+      }
+
+      setCloudReady(false)
+      const cloudLang = await loadUserLangFromCloud(userId)
+      if (!active) return
+
+      if (cloudLang === 'ru' || cloudLang === 'en') {
+        setLangState(cloudLang)
+      } else {
+        void saveUserLangToCloud(userId, currentLang)
+      }
+
+      setCloudReady(true)
+    }
+
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => syncFromSession(data.session?.user?.id ?? null))
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncFromSession(session?.user?.id ?? null)
+    })
+
+    return () => {
+      active = false
+      listener.subscription.unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     currentLang = lang
@@ -1703,7 +1780,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       // игнорируем
     }
     document.documentElement.lang = lang
-  }, [lang])
+
+    if (cloudReady && cloudUserId) {
+      void saveUserLangToCloud(cloudUserId, lang)
+    }
+  }, [cloudReady, cloudUserId, lang])
 
   const setLang = (l: Lang) => {
     currentLang = l

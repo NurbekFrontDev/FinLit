@@ -404,7 +404,7 @@ export default function PlannerFocus() {
       {/* Кольцо таймера с жестовым управлением */}
       <div className={`${cardCls} flex flex-col items-center gap-4`}>
         <div
-          className="relative h-72 w-72 cursor-pointer touch-none select-none"
+          className="relative h-72 w-72 cursor-pointer touch-none select-none transition-transform duration-150 active:scale-95"
           role="button"
           tabIndex={0}
           aria-label={t('focus.tapHint')}

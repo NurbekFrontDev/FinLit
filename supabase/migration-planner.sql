@@ -16,7 +16,7 @@
 --                 'weekly'   -- по выбранным дням недели (см. weekdays)
 --    weekdays:    массив дней ISO (1=Пн..7=Вс) для repeat_rule='weekly'.
 --                 Пример: спортзал Пн+Чт -> '{1,4}'.
---    time_of_day: секция дня 'morning'/'day'/'evening' (необязательно).
+--    time_of_day: секция дня 'morning'/'day'/'evening'/'allday' (необязательно).
 --    at_time_start/at_time_end: время или интервал в формате 'HH:MM'
 --                 (например 09:00-10:00). Можно только начало.
 --    priority:    'none'/'low'/'medium'/'high' (простая метка приоритета).
@@ -38,7 +38,7 @@ create table if not exists public.planner_items (
   repeat_rule text not null default 'none'
     check (repeat_rule in ('none', 'daily', 'weekdays', 'weekly')),
   weekdays int[] not null default '{}',
-  time_of_day text check (time_of_day in ('morning', 'day', 'evening')),
+  time_of_day text check (time_of_day in ('morning', 'day', 'evening', 'allday')),
   at_time_start text,
   at_time_end text,
   priority text not null default 'none'

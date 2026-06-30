@@ -453,6 +453,7 @@ export default function PlannerToday() {
     { key: 'morning', label: t('today.morning') },
     { key: 'day', label: t('today.day') },
     { key: 'evening', label: t('today.evening') },
+    { key: 'allday', label: t('today.allday') },
     { key: 'none', label: t('today.noTime') },
   ]
 

@@ -229,6 +229,7 @@ export default function PlannerItems() {
     if (it.time_of_day === 'morning') return t('items.secMorning')
     if (it.time_of_day === 'day') return t('items.secDay')
     if (it.time_of_day === 'evening') return t('items.secEvening')
+    if (it.time_of_day === 'allday') return t('items.secAllDay')
     return ''
   }
 
@@ -458,6 +459,7 @@ export default function PlannerItems() {
                 { value: 'morning', label: t('items.secMorning') },
                 { value: 'day', label: t('items.secDay') },
                 { value: 'evening', label: t('items.secEvening') },
+                { value: 'allday', label: t('items.secAllDay') },
               ]}
             />
           </div>

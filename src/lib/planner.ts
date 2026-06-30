@@ -25,7 +25,7 @@ export type PlannerType = 'task' | 'habit'
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly'
 
 // Часть дня для группировки (Утро/День/Вечер). null -- без времени.
-export type TimeOfDay = 'morning' | 'day' | 'evening' | null
+export type TimeOfDay = 'morning' | 'day' | 'evening' | 'allday' | null
 
 // Статус отметки за конкретный день.
 export type LogStatus = 'done' | 'skip' | 'fail'
