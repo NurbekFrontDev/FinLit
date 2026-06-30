@@ -223,9 +223,18 @@ export default function PlannerItems() {
     }
   }
 
+  const fmtTime12 = (hhmm: string): string => {
+    if (!hhmm) return ''
+    const [h, m] = hhmm.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return hhmm
+    const pm = h >= 12
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${String(m).padStart(2, '0')} ${pm ? 'PM' : 'AM'}`
+  }
+
   const timeLabel = (it: PlannerItem): string => {
-    if (it.at_time_start && it.at_time_end) return `${it.at_time_start}\u2013${it.at_time_end}`
-    if (it.at_time_start) return it.at_time_start
+    if (it.at_time_start && it.at_time_end) return `${fmtTime12(it.at_time_start)}\u2013${fmtTime12(it.at_time_end)}`
+    if (it.at_time_start) return fmtTime12(it.at_time_start)
     if (it.time_of_day === 'morning') return t('items.secMorning')
     if (it.time_of_day === 'day') return t('items.secDay')
     if (it.time_of_day === 'evening') return t('items.secEvening')

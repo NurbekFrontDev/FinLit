@@ -229,9 +229,19 @@ export default function PlannerToday() {
           ? t('today.tomorrow')
           : ''
 
+  // 12-часовой формат из HH:MM
+  const fmtTime12 = (hhmm: string): string => {
+    if (!hhmm) return ''
+    const [h, m] = hhmm.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return hhmm
+    const pm = h >= 12
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${String(m).padStart(2, '0')} ${pm ? 'PM' : 'AM'}`
+  }
+
   const timeLabel = (item: PlannerItem): string => {
-    if (item.at_time_start && item.at_time_end) return `${item.at_time_start}\u2013${item.at_time_end}`
-    if (item.at_time_start) return item.at_time_start
+    if (item.at_time_start && item.at_time_end) return `${fmtTime12(item.at_time_start)}\u2013${fmtTime12(item.at_time_end)}`
+    if (item.at_time_start) return fmtTime12(item.at_time_start)
     return ''
   }
 
@@ -401,7 +411,7 @@ export default function PlannerToday() {
           type="button"
           onClick={() => onToggle(item)}
           aria-label={item.title}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-bold transition ${
+          className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
             done
               ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
               : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'

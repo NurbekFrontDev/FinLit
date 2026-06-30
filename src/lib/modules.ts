@@ -40,6 +40,7 @@ export const MODULES: ModuleDef[] = [
       { to: '/planner', key: 'pnav.today', icon: '📅', end: true },
       { to: '/planner/items', key: 'pnav.items', icon: '🗂️' },
       { to: '/planner/matrix', key: 'pnav.matrix', icon: '⚖️' },
+      { to: '/planner/water', key: 'pnav.water', icon: '💧' },
       { to: '/planner/focus', key: 'pnav.focus', icon: '🍅' },
       { to: '/planner/stats', key: 'pnav.stats', icon: '📊' },
       { to: '/planner/settings', key: 'pnav.settings', icon: '⚙️' },

@@ -105,10 +105,19 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
     }
   }
 
+  const fmtTime12 = (hhmm: string): string => {
+    if (!hhmm) return ''
+    const [h, m] = hhmm.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return hhmm
+    const pm = h >= 12
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${String(m).padStart(2, '0')} ${pm ? 'PM' : 'AM'}`
+  }
+
   const timeLabel = (item: PlannerItem): string => {
     if (item.at_time_start && item.at_time_end)
-      return `${item.at_time_start}\u2013${item.at_time_end}`
-    if (item.at_time_start) return item.at_time_start
+      return `${fmtTime12(item.at_time_start)}\u2013${fmtTime12(item.at_time_end)}`
+    if (item.at_time_start) return fmtTime12(item.at_time_start)
     return ''
   }
 
@@ -123,7 +132,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
           type="button"
           onClick={() => onToggle(item)}
           aria-label={item.title}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-bold transition ${
+          className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
             done
               ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
               : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'
@@ -163,7 +172,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
           </div>
         )}
         {time && (
-          <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{time}</span>
+          <span className="shrink-0 rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
         )}
       </div>
     )
