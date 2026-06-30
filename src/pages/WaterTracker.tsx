@@ -247,19 +247,6 @@ export default function WaterTracker() {
     await setTotal(target)
   }
 
-  const quickAdd = async (ml: number) => {
-    if (!user) return
-    try {
-      const log = await addWaterLog(user.id, today, ml)
-      setDay((prev) =>
-        prev ? { ...prev, drunk: prev.drunk + ml, logs: [log, ...prev.logs] } : prev,
-      )
-      syncTrendToday(drunk + ml)
-    } catch {
-      /* ignore */
-    }
-  }
-
   const chooseMl = (ml: number) => {
     setSelMl(ml)
     if (user) void saveWaterPortion(user.id, ml)
@@ -333,13 +320,6 @@ export default function WaterTracker() {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => quickAdd(selMl)}
-              className="cursor-pointer rounded-xl bg-sky-500 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 active:scale-[.97]"
-            >
-              +{selMl} ml
-            </button>
           </div>
 
           <div className={`${cardCls} flex flex-col items-center gap-5`}>
