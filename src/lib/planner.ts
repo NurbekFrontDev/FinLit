@@ -754,3 +754,103 @@ export async function loadDaySummaries(
   }
   return out
 }
+
+// ====================================================================
+// Помодоро (П-7): таймер фокуса 25/5 с длинным перерывом.
+// Настройки таймера живут в app_settings (pomo_*), а сами завершённые
+// сессии пишутся в pomodoro_sessions для честной статистики фокуса.
+// ====================================================================
+
+// Фаза таймера: фокус, короткий перерыв, длинный перерыв.
+export type PomoKind = 'focus' | 'break' | 'long_break'
+
+export type PomoSettings = {
+  focusMin: number // длительность фокуса, мин
+  breakMin: number // короткий перерыв, мин
+  longBreakMin: number // длинный перерыв, мин
+  cycles: number // сколько фокусов до длинного перерыва
+}
+
+export const POMO_DEFAULTS: PomoSettings = {
+  focusMin: 25,
+  breakMin: 5,
+  longBreakMin: 15,
+  cycles: 4,
+}
+
+// Загружает настройки таймера; при отсутствии строки — значения по умолчанию.
+export async function loadPomoSettings(userId: string): Promise<PomoSettings> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('pomo_focus_min, pomo_break_min, pomo_long_break_min, pomo_cycles')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error || !data) return { ...POMO_DEFAULTS }
+  const row = data as {
+    pomo_focus_min?: number | null
+    pomo_break_min?: number | null
+    pomo_long_break_min?: number | null
+    pomo_cycles?: number | null
+  }
+  return {
+    focusMin: row.pomo_focus_min ?? POMO_DEFAULTS.focusMin,
+    breakMin: row.pomo_break_min ?? POMO_DEFAULTS.breakMin,
+    longBreakMin: row.pomo_long_break_min ?? POMO_DEFAULTS.longBreakMin,
+    cycles: row.pomo_cycles ?? POMO_DEFAULTS.cycles,
+  }
+}
+
+// Сохраняет настройки таймера (upsert строки app_settings пользователя).
+export async function savePomoSettings(userId: string, s: PomoSettings): Promise<void> {
+  const { error } = await supabase.from('app_settings').upsert(
+    {
+      user_id: userId,
+      pomo_focus_min: s.focusMin,
+      pomo_break_min: s.breakMin,
+      pomo_long_break_min: s.longBreakMin,
+      pomo_cycles: s.cycles,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  if (error) throw error
+}
+
+// Записывает завершённую сессию Помодоро (для статистики фокуса).
+export async function logPomodoro(
+  userId: string,
+  args: { kind: PomoKind; durationMin: number; itemId?: string | null; completed: boolean },
+): Promise<void> {
+  const { error } = await supabase.from('pomodoro_sessions').insert({
+    user_id: userId,
+    item_id: args.itemId ?? null,
+    duration_min: args.durationMin,
+    kind: args.kind,
+    completed: args.completed,
+  })
+  if (error) throw error
+}
+
+export type PomoToday = {
+  focusCount: number // завершённых фокус-сессий сегодня
+  focusMin: number // суммарно минут фокуса сегодня
+}
+
+// Считает фокус-статистику за сегодня по локальным границам дня.
+export async function loadPomoToday(userId: string): Promise<PomoToday> {
+  const startIso = new Date(todayStr() + 'T00:00:00').toISOString()
+  const endIso = new Date(todayStr() + 'T23:59:59').toISOString()
+  const { data, error } = await supabase
+    .from('pomodoro_sessions')
+    .select('duration_min')
+    .eq('user_id', userId)
+    .eq('kind', 'focus')
+    .eq('completed', true)
+    .gte('started_at', startIso)
+    .lte('started_at', endIso)
+  if (error) throw error
+  const rows = (data ?? []) as { duration_min: number | null }[]
+  let focusMin = 0
+  for (const r of rows) focusMin += r.duration_min ?? 0
+  return { focusCount: rows.length, focusMin }
+}
