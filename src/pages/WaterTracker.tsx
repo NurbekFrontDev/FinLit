@@ -21,7 +21,6 @@ const cardCls =
 
 // Голубая палитра для воды
 const waterBg = 'from-sky-400 to-blue-500'
-const waterBarBg = 'bg-sky-400'
 const waterBtn = 'border-sky-300 text-sky-600 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-400 dark:hover:bg-sky-500/10'
 
 // 12-часовой формат из "HH:MM"
