@@ -267,12 +267,12 @@ export type ItemInput = {
   note: string | null
   type: PlannerType
   repeat_rule: RepeatRule
-  weekdays: number[]
+  weekdays: number[] | null
   time_of_day: TimeOfDay
   at_time_start: string | null
   at_time_end: string | null
   priority: Priority
-  start_date: string
+  start_date: string | null
   icon: string | null
   // поля привычек (только для type='habit'; для обычных дел остаются пустыми)
   cue?: string | null
