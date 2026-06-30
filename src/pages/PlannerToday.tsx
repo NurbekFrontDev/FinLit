@@ -14,12 +14,14 @@ import {
   addDays,
   toDateStr,
   PRIORITY_DOT,
+  calcDayEnergy,
   type PlannerItem,
   type PlannerLog,
   type TimeOfDay,
   type DaySummary,
   type DayMark,
 } from '../lib/planner'
+import EnergyCharacter from '../components/EnergyCharacter'
 
 // Экран «Сегодня» (П-3 + П-6): один экран с переключателем вида в правом
 // верхнем углу — Сегодня / Неделя / Месяц / Год (как в TickTick).
@@ -73,6 +75,7 @@ export default function PlannerToday() {
   const [error, setError] = useState<string | null>(null)
   const [reorder, setReorder] = useState(false)
   const [sheetItem, setSheetItem] = useState<PlannerItem | null>(null)
+  const [energyOpen, setEnergyOpen] = useState(false)
 
   // ===== Виды «Неделя / Месяц / Год» (календарь) =====
   const [anchor, setAnchor] = useState(today) // дата внутри текущего периода
@@ -204,8 +207,17 @@ export default function PlannerToday() {
 
   const isDone = (id: string) => logs[id]?.status === 'done'
   const total = items.length
-  const doneCount = items.filter((it) => isDone(it.id)).length
-  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0
+  const dayEnergy = useMemo(
+    () => calcDayEnergy(items, logs),
+    [items, logs],
+  )
+  const pct = dayEnergy.energy
+  const barColor =
+    pct <= 30
+      ? 'bg-red-500'
+      : pct <= 60
+        ? 'bg-amber-500'
+        : 'bg-emerald-500'
 
   const isToday = date === today
   const relLabel =
@@ -720,24 +732,33 @@ export default function PlannerToday() {
       ) : (
         // ===== Вид «Сегодня» =====
         <>
-          {/* Прогресс-бар дня: наполняется по мере выполнения дел. */}
+          {/* Прогресс-бар дня: взвешенный по приоритетам (энергия).
+              Тап открывает окно персонажа энергии. */}
           {total > 0 && (
-            <div className={cardCls}>
+            <button
+              type="button"
+              onClick={() => setEnergyOpen(true)}
+              className={`${cardCls} w-full text-left transition hover:border-emerald-400 dark:hover:border-emerald-600`}
+            >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium">
-                  {doneCount === total
+                  {dayEnergy.doneCount === total
                     ? t('today.allDone')
-                    : t('today.progress', { done: doneCount, total })}
+                    : t('today.progress', { done: dayEnergy.doneCount, total })}
                 </p>
                 <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pct}%</span>
               </div>
               <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                 <div
-                  className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                  className={`h-full rounded-full ${barColor} transition-all duration-300`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
-            </div>
+              {/* Подсказка-«энергия» под баром */}
+              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-neutral-400 dark:text-neutral-500">
+                <span>⚡ {t('energy.tapHint')}</span>
+              </div>
+            </button>
           )}
 
           {loading ? (
@@ -807,6 +828,14 @@ export default function PlannerToday() {
             </>
           )}
         </>
+      )}
+
+      {/* Окно персонажа энергии (геймификация). */}
+      {energyOpen && (
+        <EnergyCharacter
+          energy={dayEnergy}
+          onClose={() => setEnergyOpen(false)}
+        />
       )}
 
       {/* Окно привычки (вид «Сегодня»). */}

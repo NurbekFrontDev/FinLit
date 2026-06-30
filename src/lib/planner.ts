@@ -83,6 +83,109 @@ export const PRIORITY_RANK: Record<Priority, number> = {
   none: 3,
 }
 
+// ===== Геймификация: энергия дня по приоритетам =====
+// Веса приоритетов для расчёта «энергии» дня. Идея: закрыть важное дело
+// (🔴) даёт больше энергии, чем закрыть лёгкое (🟢). Это не даёт пользователю
+// «читить», закрывая только мелочь и игнорируя важное.
+export const PRIORITY_WEIGHT: Record<Priority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+  none: 1,
+}
+
+export type DayEnergy = {
+  /** Взвешенный процент энергии 0-100 */
+  energy: number
+  /** Сколько «взвешенных» пунктов закрыто */
+  weightedDone: number
+  /** Сколько «взвешенных» пунктов всего */
+  weightedTotal: number
+  /** Разбивка по приоритетам */
+  byPriority: {
+    high: { done: number; total: number }
+    medium: { done: number; total: number }
+    low: { done: number; total: number }
+  }
+  /** Сколько дел закрыто из общего числа */
+  doneCount: number
+  totalCount: number
+  /** Закрыты ли все важные дела (🔴 + 🟡) */
+  allImportantDone: boolean
+  /** Есть ли невыполненные важные дела, но закрыта только мелочь */
+  gaming: boolean
+}
+
+/**
+ * Считает «энергию» дня по взвешенным приоритетам.
+ * Каждое закрытое дело даёт weight пунктов; максимум = сумма весов всех дел.
+ * Процент энергии = weightedDone / weightedTotal * 100.
+ *
+ * Пример: 3 дела — 🔴(3), 🟡(2), 🟢(1). Всего веса = 6.
+ *   Закрыл 🔴+🟡 → 5/6 = 83% (высокая энергия)
+ *   Закрыл только 🟢 → 1/6 = 17% (низкая энергия, «читерство»)
+ */
+export function calcDayEnergy(
+  items: PlannerItem[],
+  logs: Record<string, PlannerLog>,
+): DayEnergy {
+  const byPriority = {
+    high: { done: 0, total: 0 },
+    medium: { done: 0, total: 0 },
+    low: { done: 0, total: 0 },
+  }
+  let weightedDone = 0
+  let weightedTotal = 0
+  let doneCount = 0
+  let lowDoneOnly = true // если закрыты только low/none
+  let importantRemaining = false
+
+  for (const item of items) {
+    const weight = PRIORITY_WEIGHT[item.priority]
+    weightedTotal += weight
+    const isDone = logs[item.id]?.status === 'done'
+
+    if (item.priority === 'high') {
+      byPriority.high.total++
+      if (isDone) byPriority.high.done++
+      else importantRemaining = true
+    } else if (item.priority === 'medium') {
+      byPriority.medium.total++
+      if (isDone) byPriority.medium.done++
+      else importantRemaining = true
+    } else {
+      byPriority.low.total++
+      if (isDone) byPriority.low.done++
+    }
+
+    if (isDone) {
+      weightedDone += weight
+      doneCount++
+      if (item.priority === 'high' || item.priority === 'medium') {
+        lowDoneOnly = false
+      }
+    }
+  }
+
+  const energy = weightedTotal > 0 ? Math.round((weightedDone / weightedTotal) * 100) : 0
+  const allImportantDone =
+    byPriority.high.total > 0 || byPriority.medium.total > 0
+      ? byPriority.high.done === byPriority.high.total &&
+        byPriority.medium.done === byPriority.medium.total
+      : true
+
+  return {
+    energy,
+    weightedDone,
+    weightedTotal,
+    byPriority,
+    doneCount,
+    totalCount: items.length,
+    allImportantDone,
+    gaming: lowDoneOnly && doneCount > 0 && importantRemaining,
+  }
+}
+
 // ===== Матрица Эйзенхауэра (П-8): срочность × важность =====
 // Срочность берём из метки важности-цвета (🔴 high = срочно), а «важность»
 // для матрицы — это отдельная отметка important (двигает к большой цели).
