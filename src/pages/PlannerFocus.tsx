@@ -128,6 +128,7 @@ export default function PlannerFocus() {
     dir: null,
   })
   const startRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const pressedRef = useRef(false)
   const dialRef = useRef<{ active: boolean; dx: number; dy: number; dir: Dir }>({
     active: false,
     dx: 0,
@@ -268,12 +269,15 @@ export default function PlannerFocus() {
       // noop
     }
     startRef.current = { x: e.clientX, y: e.clientY }
+    pressedRef.current = true
     // Do NOT show the dial on press - only after a drag past deadzone.
     const next = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = next
     setDial(next)
   }
   const onDialMove = (e: React.PointerEvent) => {
+    // Only process move when the pointer is actually pressed (mouse drag or touch).
+    if (!pressedRef.current) return
     const dx = e.clientX - startRef.current.x
     const dy = e.clientY - startRef.current.y
     // Only show the dial once the pointer moves beyond the deadzone.
@@ -288,6 +292,7 @@ export default function PlannerFocus() {
     } catch {
       // noop
     }
+    pressedRef.current = false
     const d = dialRef.current
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
@@ -305,6 +310,7 @@ export default function PlannerFocus() {
     else start()
   }
   const onDialCancel = () => {
+    pressedRef.current = false
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
     setDial(cleared)
