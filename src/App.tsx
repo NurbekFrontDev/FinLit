@@ -14,6 +14,7 @@ import Settings from './pages/Settings'
 import PlannerStub from './pages/PlannerStub'
 import PlannerToday from './pages/PlannerToday'
 import PlannerItems from './pages/PlannerItems'
+import PlannerCalendar from './pages/PlannerCalendar'
 
 function App() {
   const { session, loading } = useAuth()
@@ -51,7 +52,7 @@ function App() {
         <Route path="/planner" element={<PlannerToday />} />
         <Route path="/planner/items" element={<PlannerItems />} />
         <Route path="/planner/habits" element={<Navigate to="/planner/items" replace />} />
-        <Route path="/planner/calendar" element={<PlannerStub titleKey="pnav.calendar" icon="🗓️" />} />
+        <Route path="/planner/calendar" element={<PlannerCalendar />} />
         <Route path="/planner/focus" element={<PlannerStub titleKey="pnav.focus" icon="🍅" />} />
         <Route path="/planner/stats" element={<PlannerStub titleKey="pnav.stats" icon="📊" />} />
         <Route path="*" element={<Navigate to="/" replace />} />

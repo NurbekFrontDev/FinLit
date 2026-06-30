@@ -684,3 +684,73 @@ export async function deleteReflection(userId: string, id: string): Promise<void
     .eq('id', id)
   if (error) throw error
 }
+
+// ====================================================================
+// Календарь (П-6): сводка по каждому дню за период для обзорных видов
+// (Месяц / Неделя / Год). На каждый день — сколько дел, сколько выполнено
+// и метки для цветных полосок (важность + признак выполнения).
+// ====================================================================
+
+export type DayMark = {
+  priority: Priority
+  done: boolean
+  habit: boolean
+}
+
+export type DaySummary = {
+  total: number
+  done: number
+  marks: DayMark[]
+}
+
+// Считает сводку по каждому дню в диапазоне [startDate, endDate] включительно.
+// Дела загружаются один раз, попадание в каждый день проверяется локально.
+export async function loadDaySummaries(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<Record<string, DaySummary>> {
+  const [itemsRes, logsRes] = await Promise.all([
+    supabase.from('planner_items').select(ITEM_COLS).eq('user_id', userId).eq('archived', false),
+    supabase
+      .from('planner_logs')
+      .select(LOG_COLS)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate),
+  ])
+  if (itemsRes.error) throw itemsRes.error
+  if (logsRes.error) throw logsRes.error
+
+  const items = (itemsRes.data ?? []) as PlannerItem[]
+  // дата -> (itemId -> статус)
+  const logsByDate = new Map<string, Record<string, LogStatus>>()
+  for (const l of (logsRes.data ?? []) as PlannerLog[]) {
+    let m = logsByDate.get(l.date)
+    if (!m) {
+      m = {}
+      logsByDate.set(l.date, m)
+    }
+    m[l.item_id] = l.status
+  }
+
+  // Сортируем по важности, чтобы цветные полоски шли в осмысленном порядке.
+  const sorted = items.slice().sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
+
+  const out: Record<string, DaySummary> = {}
+  let d = startDate
+  while (d <= endDate) {
+    const dayLogs = logsByDate.get(d) ?? {}
+    const marks: DayMark[] = []
+    let done = 0
+    for (const it of sorted) {
+      if (!isItemOnDate(it, d)) continue
+      const isDone = dayLogs[it.id] === 'done'
+      if (isDone) done++
+      marks.push({ priority: it.priority, done: isDone, habit: it.type === 'habit' })
+    }
+    if (marks.length > 0) out[d] = { total: marks.length, done, marks }
+    d = addDays(d, 1)
+  }
+  return out
+}
