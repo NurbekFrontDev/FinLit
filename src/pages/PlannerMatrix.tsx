@@ -116,7 +116,6 @@ export default function PlannerMatrix() {
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div>
         <h1 className="text-xl font-semibold">{t('pnav.matrix')}</h1>
-        <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{t('matrix.subtitle')}</p>
       </div>
 
       {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}

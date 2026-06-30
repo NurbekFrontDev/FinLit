@@ -102,7 +102,6 @@ export default function PlannerStats() {
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div>
         <h1 className="text-xl font-semibold">{t('pnav.stats')}</h1>
-        <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{t('stats.subtitle')}</p>
       </div>
 
       {/* Переключатель периода */}

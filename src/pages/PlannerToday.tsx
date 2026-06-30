@@ -411,7 +411,7 @@ export default function PlannerToday() {
           type="button"
           onClick={() => onToggle(item)}
           aria-label={item.title}
-          className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
+          className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border text-[10px] font-bold transition ${
             done
               ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
               : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'
@@ -452,7 +452,7 @@ export default function PlannerToday() {
           </div>
         )}
         {time && (
-          <span className="shrink-0 rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
+          <span className="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
         )}
       </div>
     )
@@ -513,7 +513,7 @@ export default function PlannerToday() {
               {sectionLabel(item)}
             </span>
             {time && (
-              <span className="shrink-0 rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">
+              <span className="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">
                 {time}
               </span>
             )}
@@ -810,6 +810,41 @@ export default function PlannerToday() {
       ) : (
         // ===== Вид «Сегодня» =====
         <>
+          {/* Кольца дней: быстрый переход между днями одним кликом (как в старом плане).
+              Окно из 7 дней всегда центрируется на выбранном дне. */}
+          <div className="flex justify-between gap-1">
+            {Array.from({ length: 7 }, (_, i) => {
+              const dStr = addDays(date, i - 3)
+              const dt = new Date(dStr + 'T00:00:00')
+              const wd = (dt.getDay() + 6) % 7
+              const sel = dStr === date
+              const isStripToday = dStr === today
+              return (
+                <button
+                  key={dStr}
+                  type="button"
+                  onClick={() => setDate(dStr)}
+                  className={`flex flex-1 flex-col items-center gap-1 rounded-2xl border py-1.5 transition ${
+                    sel
+                      ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
+                      : isStripToday
+                        ? 'border-emerald-500/50 text-emerald-600 dark:text-emerald-400'
+                        : 'border-transparent text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  <span className="text-[10px] font-medium uppercase">{WEEKDAYS[wd]}</span>
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                      sel ? 'bg-white/25' : isStripToday ? 'bg-emerald-500/10' : ''
+                    }`}
+                  >
+                    {dt.getDate()}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
           {/* Прогресс-бар дня: взвешенный по приоритетам (энергия).
               Тап открывает окно персонажа энергии. */}
           {total > 0 && (

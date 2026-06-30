@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { useLang } from '../lib/i18n'
 import { addDays, todayStr } from '../lib/planner'
@@ -108,6 +108,21 @@ export default function WaterTracker() {
   const [goalDraft, setGoalDraft] = useState('')
   const [statMode, setStatMode] = useState<'week' | 'month'>('week')
   const [statOffset, setStatOffset] = useState(0)
+
+  // Горизонтальный список порций: держим выбранную порцию по центру.
+  const quickRef = useRef<HTMLDivElement>(null)
+  const chipRefs = useRef<Map<number, HTMLButtonElement>>(new Map())
+  useEffect(() => {
+    const cont = quickRef.current
+    const el = chipRefs.current.get(selMl)
+    if (!cont || !el) return
+    const target =
+      cont.scrollLeft +
+      el.getBoundingClientRect().left -
+      cont.getBoundingClientRect().left -
+      (cont.clientWidth - el.clientWidth) / 2
+    cont.scrollTo({ left: Math.max(0, target), behavior: 'smooth' })
+  }, [selMl, loading])
 
   // Загрузка дня (сегодня)
   useEffect(() => {
@@ -304,10 +319,14 @@ export default function WaterTracker() {
                 {selMl} ml
               </span>
             </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-1">
+            <div ref={quickRef} className="flex gap-1.5 overflow-x-auto pb-1">
               {QUICK_STEPS.map((ml) => (
                 <button
                   key={ml}
+                  ref={(el) => {
+                    if (el) chipRefs.current.set(ml, el)
+                    else chipRefs.current.delete(ml)
+                  }}
                   type="button"
                   onClick={() => chooseMl(ml)}
                   className={`shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-sm font-medium transition ${

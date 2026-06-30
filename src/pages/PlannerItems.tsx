@@ -3,6 +3,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useLang } from '../lib/i18n'
 import Select from '../components/Select'
 import DatePicker from '../components/DatePicker'
+import TimePicker from '../components/TimePicker'
 import IconButton from '../components/IconButton'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
@@ -476,20 +477,16 @@ export default function PlannerItems() {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>{t('items.timeStart')}</label>
-              <input
-                type="time"
-                className={inputCls}
+              <TimePicker
                 value={form.at_time_start}
-                onChange={(e) => setForm((f) => ({ ...f, at_time_start: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, at_time_start: v }))}
               />
             </div>
             <div>
               <label className={labelCls}>{t('items.timeEnd')}</label>
-              <input
-                type="time"
-                className={inputCls}
+              <TimePicker
                 value={form.at_time_end}
-                onChange={(e) => setForm((f) => ({ ...f, at_time_end: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, at_time_end: v }))}
               />
             </div>
           </div>

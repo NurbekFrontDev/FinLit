@@ -265,7 +265,16 @@ export default function PlannerFocus() {
     return dy > 0 ? 'stop' : 'add'
   }
 
+  // Тап/жест засчитываем только если он начался внутри круга кольца, а не по углам квадрата.
+  const insideRing = (e: React.PointerEvent): boolean => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    return Math.hypot(e.clientX - cx, e.clientY - cy) <= (r.width / 2) * 0.92
+  }
+
   const onDialDown = (e: React.PointerEvent) => {
+    if (!insideRing(e)) return
     try {
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     } catch {
@@ -290,6 +299,7 @@ export default function PlannerFocus() {
     setDial(next)
   }
   const onDialUp = (e: React.PointerEvent) => {
+    const wasPressed = pressedRef.current
     try {
       ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
     } catch {
@@ -300,6 +310,8 @@ export default function PlannerFocus() {
     const cleared = { active: false, dx: 0, dy: 0, dir: null as Dir }
     dialRef.current = cleared
     setDial(cleared)
+    // Нажатие началось вне круга — игнорируем (ни тап, ни жест).
+    if (!wasPressed) return
     // If dial was shown (dragged past deadzone), perform the directional action.
     if (d.active) {
       if (d.dir === 'add') addMinute()
@@ -404,7 +416,7 @@ export default function PlannerFocus() {
       {/* Кольцо таймера с жестовым управлением */}
       <div className={`${cardCls} flex flex-col items-center gap-4`}>
         <div
-          className="relative h-72 w-72 cursor-pointer touch-none select-none transition-transform duration-150 active:scale-95"
+          className="relative mx-auto h-72 w-72 cursor-pointer touch-none select-none"
           role="button"
           tabIndex={0}
           aria-label={t('focus.tapHint')}
@@ -509,10 +521,17 @@ export default function PlannerFocus() {
         </span>
       </div>
 
-      {/* Настройки таймера */}
+      {/* Настройки таймера — отдельное окно по центру экрана */}
       {showSettings && (
-        <div className={`${cardCls} flex flex-col gap-3`}>
-          <h2 className="text-base font-semibold">{t('focus.settings')}</h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-sm flex-col gap-3 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold">{t('focus.settings')}</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">
@@ -614,6 +633,7 @@ export default function PlannerFocus() {
             >
               {t('common.save')}
             </button>
+          </div>
           </div>
         </div>
       )}
