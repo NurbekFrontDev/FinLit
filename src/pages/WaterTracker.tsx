@@ -9,7 +9,6 @@ import {
   removeWaterLog,
   loadWaterWeek,
   type WaterDay,
-  type WaterLog,
 } from '../lib/water'
 
 const cardCls =
@@ -160,7 +159,7 @@ export default function WaterTracker() {
               ›
             </button>
           </div>
-          <div className="flex items-end justify-between gap-2" style={333}>
+          <div className="flex items-end justify-between gap-2">
             {histDays.map((d) => {
               const ml = weekData[d] || 0
               const dayPct = goal > 0 ? Math.min(100, (ml / goal) * 100) : 0
