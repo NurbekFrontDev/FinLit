@@ -887,3 +887,136 @@ export async function loadPomoToday(userId: string): Promise<PomoToday> {
   for (const r of rows) focusMin += r.duration_min ?? 0
   return { focusCount: rows.length, focusMin }
 }
+
+// ====================================================================
+// Статистика (П-9): сводка выполнения дел и привычек за период + фокус.
+//   Период: неделя (7 дней), месяц (30 дней) или «всё время» (до года назад).
+//   Дела и привычки считаем раздельно. Осознанный пропуск привычки (skip)
+//   не штрафует -- он не попадает в «запланировано». Фокус берём из
+//   завершённых сессий Помодоро за тот же период.
+// ====================================================================
+
+export type StatsPeriod = 'week' | 'month' | 'all'
+
+export type StatsDay = {
+  date: string
+  planned: number
+  done: number
+}
+
+export type PlannerStats = {
+  start: string
+  end: string
+  taskPlanned: number
+  taskDone: number
+  habitPlanned: number
+  habitDone: number
+  focusSessions: number
+  focusMin: number
+  activeTasks: number
+  activeHabits: number
+  perDay: StatsDay[]
+}
+
+// Начало периода статистики (конец всегда сегодня).
+export function statsRangeStart(period: StatsPeriod, today: string = todayStr()): string {
+  if (period === 'week') return addDays(today, -6)
+  if (period === 'month') return addDays(today, -29)
+  return addDays(today, -364) // «всё время» ограничиваем годом ради разумной нагрузки
+}
+
+// Считает сводку статистики за период.
+export async function loadPlannerStats(
+  userId: string,
+  period: StatsPeriod,
+): Promise<PlannerStats> {
+  const end = todayStr()
+  const start = statsRangeStart(period, end)
+  const startIso = new Date(start + 'T00:00:00').toISOString()
+  const endIso = new Date(end + 'T23:59:59').toISOString()
+
+  const [itemsRes, logsRes, pomoRes] = await Promise.all([
+    supabase.from('planner_items').select(ITEM_COLS).eq('user_id', userId).eq('archived', false),
+    supabase
+      .from('planner_logs')
+      .select(LOG_COLS)
+      .eq('user_id', userId)
+      .gte('date', start)
+      .lte('date', end),
+    supabase
+      .from('pomodoro_sessions')
+      .select('duration_min')
+      .eq('user_id', userId)
+      .eq('kind', 'focus')
+      .eq('completed', true)
+      .gte('started_at', startIso)
+      .lte('started_at', endIso),
+  ])
+  if (itemsRes.error) throw itemsRes.error
+  if (logsRes.error) throw logsRes.error
+  if (pomoRes.error) throw pomoRes.error
+
+  const items = (itemsRes.data ?? []) as PlannerItem[]
+  const logsByDate = new Map<string, Record<string, LogStatus>>()
+  for (const l of (logsRes.data ?? []) as PlannerLog[]) {
+    let m = logsByDate.get(l.date)
+    if (!m) {
+      m = {}
+      logsByDate.set(l.date, m)
+    }
+    m[l.item_id] = l.status
+  }
+
+  let taskPlanned = 0
+  let taskDone = 0
+  let habitPlanned = 0
+  let habitDone = 0
+  const perDay: StatsDay[] = []
+
+  let d = start
+  while (d <= end) {
+    const dayLogs = logsByDate.get(d) ?? {}
+    let planned = 0
+    let done = 0
+    for (const it of items) {
+      if (!isItemOnDate(it, d)) continue
+      const st = dayLogs[it.id]
+      if (it.type === 'habit') {
+        if (st === 'skip') continue // осознанный пропуск не штрафует
+        habitPlanned++
+        planned++
+        if (st === 'done') {
+          habitDone++
+          done++
+        }
+      } else {
+        taskPlanned++
+        planned++
+        if (st === 'done') {
+          taskDone++
+          done++
+        }
+      }
+    }
+    perDay.push({ date: d, planned, done })
+    d = addDays(d, 1)
+  }
+
+  const pomoRows = (pomoRes.data ?? []) as { duration_min: number | null }[]
+  let focusMin = 0
+  for (const r of pomoRows) focusMin += r.duration_min ?? 0
+
+  return {
+    start,
+    end,
+    taskPlanned,
+    taskDone,
+    habitPlanned,
+    habitDone,
+    focusSessions: pomoRows.length,
+    focusMin,
+    activeTasks: items.filter((i) => i.type === 'task').length,
+    activeHabits: items.filter((i) => i.type === 'habit').length,
+    perDay,
+  }
+}

@@ -11,11 +11,11 @@ import Investments from './pages/Investments'
 import Charity from './pages/Charity'
 import History from './pages/History'
 import Settings from './pages/Settings'
-import PlannerStub from './pages/PlannerStub'
 import PlannerToday from './pages/PlannerToday'
 import PlannerItems from './pages/PlannerItems'
 import PlannerMatrix from './pages/PlannerMatrix'
 import PlannerFocus from './pages/PlannerFocus'
+import PlannerStats from './pages/PlannerStats'
 
 function App() {
   const { session, loading } = useAuth()
@@ -56,7 +56,7 @@ function App() {
         <Route path="/planner/habits" element={<Navigate to="/planner/items" replace />} />
         <Route path="/planner/calendar" element={<Navigate to="/planner" replace />} />
         <Route path="/planner/focus" element={<PlannerFocus />} />
-        <Route path="/planner/stats" element={<PlannerStub titleKey="pnav.stats" icon="📊" />} />
+        <Route path="/planner/stats" element={<PlannerStats />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
