@@ -678,13 +678,11 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
       <div
         className={
           embedded
-            ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1'
+            ? 'flex flex-wrap items-center gap-x-2 gap-y-1'
             : 'sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85'
         }
       >
-        {embedded ? (
-          <span />
-        ) : (
+        {!embedded && (
           <h1 className="text-2xl font-semibold">💳 {t('debts.title')}</h1>
         )}
         {(active.length > 0 || (debtCategory && debtsBudget > 0)) && (
@@ -712,7 +710,7 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
           onClick={() => setFormOpen(true)}
           className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
         >
-          <span>＋ {t('debts.add')}</span>
+          <span>{t('debts.add')}</span>
           <span className="text-neutral-400">▾</span>
         </button>
       ) : (
@@ -725,7 +723,7 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
           onClick={() => setFormOpen(false)}
           className="flex items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
         >
-          <span>＋ {t('debts.add')}</span>
+          <span>{t('debts.add')}</span>
           <span className="text-neutral-400">▴</span>
         </button>
         <input

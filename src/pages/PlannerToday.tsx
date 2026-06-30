@@ -37,7 +37,7 @@ const cardCls =
   'rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50'
 // Минималистичная стрелка навигации (без рамки) — по бокам от колец дней.
 const arrowBtn =
-  'flex h-8 w-7 shrink-0 items-center justify-center text-xl leading-none text-neutral-400 transition hover:text-neutral-700 active:scale-90 dark:text-neutral-500 dark:hover:text-neutral-200'
+  'flex h-8 w-5 shrink-0 items-center justify-center text-lg leading-none text-neutral-400 transition hover:text-neutral-700 active:scale-90 dark:text-neutral-500 dark:hover:text-neutral-200'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
@@ -732,9 +732,9 @@ export default function PlannerToday() {
           className="min-w-0 flex-1 truncate text-center"
         >
           {isCalendar ? (
-            <span className="text-base font-semibold">{periodLabel}</span>
+            <span className="text-sm font-semibold">{periodLabel}</span>
           ) : (
-            <span className="text-base font-semibold">
+            <span className="text-sm font-semibold">
               {relLabel || formatDateHuman(date)}
               {relLabel && (
                 <span className="ml-1.5 text-xs font-normal text-neutral-500 dark:text-neutral-400">
@@ -807,9 +807,9 @@ export default function PlannerToday() {
                   type="button"
                   onClick={() => setDate(dStr)}
                   aria-label={WEEKDAYS[wd]}
-                  className="flex flex-1 flex-col items-center"
+                  className="flex min-w-0 flex-1 flex-col items-center"
                 >
-                  <span className="relative flex h-12 w-12 items-center justify-center">
+                  <span className="relative flex aspect-square w-full max-w-[44px] items-center justify-center">
                     <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                       <circle
                         cx="24"
