@@ -46,25 +46,24 @@ const iso = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
 const STRIP_R = 21
 const STRIP_C = 2 * Math.PI * STRIP_R
 
-// Цвет полоски-метки в календаре: выполнено -> зелёный, иначе по важности дела.
-const markColor = (m: DayMark): string => {
-  if (m.done) return 'bg-emerald-500'
-  switch (m.priority) {
-    case 'high':
-      return 'bg-red-500'
-    case 'medium':
-      return 'bg-amber-500'
-    case 'low':
-      return 'bg-green-500'
-    default:
-      return 'bg-sky-500'
-  }
-}
+// Полоска-метка дня в календаре: выполнено -> зелёный, запланировано -> серый.
+// (Раньше незавершённые дела красились по важности в красный/жёлтый — из-за этого
+// месяц/неделя выглядели «тревожно красными». Теперь спокойный нейтральный цвет,
+// а зелёным выделяется только выполненное.)
+const markColor = (m: DayMark): string =>
+  m.done ? 'bg-emerald-500' : 'bg-neutral-300 dark:bg-neutral-600'
 
-// Цвет кольца дня по проценту выполнения — синхронно с прогресс-баром дня
-// (≤30% красный, ≤60% жёлтый, иначе зелёный).
+// Цвет кольца дня по проценту выполнения — синхронно с прогресс-баром дня.
+// 0% (день ещё не начат / ничего не отмечено) -> нейтральный серый (НЕ красный),
+// ≤30% красный, ≤60% жёлтый, иначе зелёный.
 const ringTone = (p: number): string =>
-  p <= 30 ? 'text-red-500' : p <= 60 ? 'text-amber-500' : 'text-emerald-500'
+  p <= 0
+    ? 'text-neutral-300 dark:text-neutral-700'
+    : p <= 30
+      ? 'text-red-500'
+      : p <= 60
+        ? 'text-amber-500'
+        : 'text-emerald-500'
 
 export default function PlannerToday() {
   const { user } = useAuth()
@@ -724,7 +723,18 @@ export default function PlannerToday() {
       {/* Верхняя строка: дата по центру (тап — вернуться к «сегодня») +
           иконка-календарь справа (открывает выпадающий список вида). */}
       <div className="flex items-center justify-between gap-2">
-        <span aria-hidden className="h-8 w-8 shrink-0" />
+        {!isCalendar && date !== today ? (
+          <button
+            type="button"
+            onClick={() => setDate(today)}
+            title={t('cal.today')}
+            className="flex h-8 shrink-0 items-center rounded-lg border border-emerald-500/40 px-2 text-xs font-medium text-emerald-600 transition hover:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            {t('cal.today')}
+          </button>
+        ) : (
+          <span aria-hidden className="h-8 w-8 shrink-0" />
+        )}
         <button
           type="button"
           onClick={() => (isCalendar ? setAnchor(today) : setDate(today))}
@@ -817,7 +827,7 @@ export default function PlannerToday() {
                         r={STRIP_R}
                         fill="none"
                         strokeWidth="3.5"
-                        className={sel ? `${tone} opacity-20` : 'text-neutral-200 dark:text-neutral-800'}
+                        className={sel && ringPct > 0 ? `${tone} opacity-20` : 'text-neutral-200 dark:text-neutral-800'}
                         stroke="currentColor"
                       />
                       {ringPct > 0 && (
@@ -838,7 +848,9 @@ export default function PlannerToday() {
                     <span
                       className={`relative text-[11px] font-bold uppercase tracking-tight ${
                         sel
-                          ? tone
+                          ? ringPct > 0
+                            ? tone
+                            : 'text-neutral-600 dark:text-neutral-300'
                           : isStripToday
                             ? 'text-emerald-600 dark:text-emerald-400'
                             : 'text-neutral-600 dark:text-neutral-300'
@@ -897,10 +909,7 @@ export default function PlannerToday() {
                 <span className="inline-block h-2 w-4 rounded-full bg-emerald-500" /> {t('habits.legendDone')}
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block h-2 w-4 rounded-full bg-red-500" /> {t('cal.high')}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-2 w-4 rounded-full bg-sky-500" /> {t('cal.task')}
+                <span className="inline-block h-2 w-4 rounded-full bg-neutral-300 dark:bg-neutral-600" /> {t('cal.task')}
               </span>
             </div>
           )}
@@ -958,7 +967,7 @@ export default function PlannerToday() {
             <>
               {/* Отступ под фиксированную панель, чтобы последнее дело не пряталось. */}
               <div aria-hidden className="h-14" />
-              <div className="fixed inset-x-0 bottom-16 z-20 px-4 md:bottom-0">
+              <div className="fixed inset-x-0 bottom-16 z-20 px-4 md:bottom-0 md:left-72">
                 <button
                   type="button"
                   onClick={() => setEnergyOpen(true)}

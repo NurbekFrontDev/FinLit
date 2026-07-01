@@ -360,6 +360,25 @@ export async function saveDayOrder(
   if (error) throw error
 }
 
+// Сохраняет ГЛОБАЛЬНЫЙ порядок дел (экран «Мои дела»). Этот порядок задаёт
+// порядок дел по умолчанию для КАЖДОГО дня (и при вкл./выкл. разбивке на
+// Утро/День/Вечер) — если для конкретного дня не задан свой порядок
+// перетаскиванием (planner_day_order). Пишем sort_order прямо в planner_items.
+export async function saveItemsOrder(userId: string, orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  const results = await Promise.all(
+    orderedIds.map((id, i) =>
+      supabase
+        .from('planner_items')
+        .update({ sort_order: i + 1 })
+        .eq('user_id', userId)
+        .eq('id', id),
+    ),
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw failed.error
+}
+
 // ===== Настройка: разбивать день на Утро/День/Вечер =====
 export async function loadDaySections(userId: string): Promise<boolean> {
   const { data, error } = await supabase

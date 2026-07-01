@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { useLang } from '../lib/i18n'
 import Select from '../components/Select'
@@ -11,6 +11,7 @@ import {
   createItem,
   updateItem,
   archiveItem,
+  saveItemsOrder,
   PRIORITY_DOT,
   type PlannerItem,
   type PlannerType,
@@ -81,6 +82,145 @@ export default function PlannerItems() {
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [delItem, setDelItem] = useState<PlannerItem | null>(null)
+
+  // ===== Перетаскивание для смены порядка (тот же механизм, что в «Долгах»/
+  // «Сегодня»). Порядок сохраняется в planner_items.sort_order через saveItemsOrder
+  // и задаёт порядок дел ПО УМОЛЧАНИЮ на каждый день (и при вкл./выкл. разбивке). =====
+  const [reorder, setReorder] = useState(false)
+  type DragState = {
+    id: string
+    fromIndex: number
+    overIndex: number
+    startY: number
+    offset: number
+    slot: number
+    active: boolean
+    settling: boolean
+  }
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const dragRef = useRef<DragState | null>(null)
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const settleTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    }
+  }, [])
+
+  const persistOrder = async (ordered: PlannerItem[]) => {
+    if (!user) return
+    try {
+      await saveItemsOrder(user.id, ordered.map((i) => i.id))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const startDrag = (e: React.PointerEvent, id: string, index: number) => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const el = rowRefs.current.get(id)
+    const slot = (el?.offsetHeight ?? 64) + 8
+    const next: DragState = {
+      id,
+      fromIndex: index,
+      overIndex: index,
+      startY: e.clientY,
+      offset: 0,
+      slot,
+      active: false,
+      settling: false,
+    }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d || d.settling) return
+    const offset = e.clientY - d.startY
+    const isActive = d.active || Math.abs(offset) > 6
+    const steps = Math.round(offset / d.slot)
+    const overIndex = Math.max(0, Math.min(items.length - 1, d.fromIndex + steps))
+    if (offset === d.offset && overIndex === d.overIndex && isActive === d.active) return
+    const next: DragState = { ...d, offset, overIndex, active: isActive }
+    dragRef.current = next
+    setDrag(next)
+  }
+
+  const endDrag = (e?: React.PointerEvent) => {
+    if (e) {
+      try {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch {
+        // уже отпущен
+      }
+    }
+    const d = dragRef.current
+    if (!d) return
+    if (!d.active) {
+      dragRef.current = null
+      setDrag(null)
+      return
+    }
+    const slot = d.slot
+    const targetOffset = (d.overIndex - d.fromIndex) * slot
+    const settling: DragState = { ...d, settling: true, offset: targetOffset }
+    dragRef.current = settling
+    setDrag(settling)
+
+    const order = items
+    if (settleTimer.current) window.clearTimeout(settleTimer.current)
+    settleTimer.current = window.setTimeout(() => {
+      settleTimer.current = null
+      if (d.overIndex !== d.fromIndex) {
+        const next = order.slice()
+        const [moved] = next.splice(d.fromIndex, 1)
+        next.splice(d.overIndex, 0, moved)
+        setItems(next)
+        void persistOrder(next)
+      }
+      dragRef.current = null
+      setDrag(null)
+    }, 210)
+  }
+
+  const dragStyle = (id: string, index: number): React.CSSProperties | undefined => {
+    if (!drag || !drag.active) return undefined
+    if (id === drag.id) {
+      return {
+        transform: `translateY(${drag.offset}px) scale(${drag.settling ? 1 : 1.03})`,
+        transition: drag.settling ? 'transform 200ms cubic-bezier(0.2, 0, 0, 1)' : 'none',
+        position: 'relative',
+        zIndex: 30,
+      }
+    }
+    let shift = 0
+    if (drag.overIndex > drag.fromIndex && index > drag.fromIndex && index <= drag.overIndex)
+      shift = -drag.slot
+    else if (drag.overIndex < drag.fromIndex && index >= drag.overIndex && index < drag.fromIndex)
+      shift = drag.slot
+    return {
+      transform: `translateY(${shift}px)`,
+      transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
+    }
+  }
+
+  const grip = (id: string, index: number) => (
+    <button
+      type="button"
+      aria-label={t('today.reorderHint')}
+      title={t('today.reorderHint')}
+      onPointerDown={(e) => startDrag(e, id, index)}
+      onPointerMove={moveDrag}
+      onPointerUp={(e) => endDrag(e)}
+      onPointerCancel={(e) => endDrag(e)}
+      className="shrink-0 cursor-grab touch-none select-none px-1 text-lg leading-none text-neutral-400 transition hover:text-neutral-600 active:cursor-grabbing dark:text-neutral-500 dark:hover:text-neutral-300"
+    >
+      ⠿
+    </button>
+  )
 
   const WEEKDAYS =
     lang === 'en'
@@ -520,15 +660,30 @@ export default function PlannerItems() {
       {/* Закреплённая шапка: заголовок + кнопка добавления не движутся при прокрутке. */}
       <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between gap-2 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85">
         <h1 className="text-xl font-semibold">{t('pnav.items')}</h1>
-        {!showForm && (
-          <button
-            type="button"
-            onClick={openAdd}
-            className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400"
-          >
-            {t('items.add')}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {!showForm && items.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setReorder((v) => !v)}
+              className={`rounded-lg px-2.5 py-2 text-xs font-medium transition ${
+                reorder
+                  ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                  : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+              }`}
+            >
+              {reorder ? t('common.reorderDone') : t('common.reorder')}
+            </button>
+          )}
+          {!showForm && !reorder && (
+            <button
+              type="button"
+              onClick={openAdd}
+              className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-neutral-950 transition hover:bg-emerald-400"
+            >
+              {t('items.add')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Форма добавления — сверху; форма редактирования — встроена под делом ниже. */}
@@ -540,6 +695,47 @@ export default function PlannerItems() {
         <p className="rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
           {t('items.empty')}
         </p>
+      ) : reorder ? (
+        <div className="flex flex-col gap-2">
+          <p className="px-1 text-xs text-neutral-500 dark:text-neutral-400">
+            {t('today.reorderHint')}
+          </p>
+          {items.map((it, index) => {
+            const dot = PRIORITY_DOT[it.priority]
+            const time = timeLabel(it)
+            const isHabitItem = it.type === 'habit'
+            return (
+              <div
+                key={it.id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(it.id, el)
+                  else rowRefs.current.delete(it.id)
+                }}
+                style={dragStyle(it.id, index)}
+                className={`flex items-start gap-2 ${cardCls}${
+                  drag?.id === it.id && drag.active
+                    ? ' border-emerald-500/60 shadow-xl ring-1 ring-emerald-500/40'
+                    : ''
+                }`}
+              >
+                {grip(it.id, index)}
+                {dot && <span className="mt-0.5 shrink-0 text-xs leading-none">{dot}</span>}
+                {it.icon && <span className="shrink-0">{it.icon}</span>}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="break-words text-sm font-medium">{it.title}</p>
+                    {it.important && <span className="shrink-0 text-xs">⭐</span>}
+                    {isHabitItem && <span className="shrink-0 text-xs">🔁</span>}
+                  </div>
+                  <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                    {describeRepeat(it)}
+                    {time ? ` · ${time}` : ''}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
         <div className="flex flex-col gap-2">
           {items.map((it) => {

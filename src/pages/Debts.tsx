@@ -678,29 +678,26 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
       <div
         className={
           embedded
-            ? 'flex flex-wrap items-center gap-x-2 gap-y-1'
-            : 'sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85'
+            ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400'
+            : 'sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200/70 bg-white/85 px-4 py-3 text-xs text-neutral-500 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85 dark:text-neutral-400'
         }
       >
         {!embedded && (
-          <h1 className="text-2xl font-semibold">💳 {t('debts.title')}</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+            💳 {t('debts.title')}
+          </h1>
         )}
-        {(active.length > 0 || (debtCategory && debtsBudget > 0)) && (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-            {active.length > 0 && (
-              <span>{t('debts.totalLeft', { v: formatSum(totalLeft) })}</span>
-            )}
-            {active.length > 0 && debtCategory && debtsBudget > 0 && (
-              <span aria-hidden className="text-neutral-300 dark:text-neutral-700">
-                ·
-              </span>
-            )}
-            {debtCategory && debtsBudget > 0 && (
-              <span>
-                {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
-              </span>
-            )}
-          </div>
+        {/* Слева — сколько осталось выплатить */}
+        {active.length > 0 ? (
+          <span>{t('debts.totalLeft', { v: formatSum(totalLeft) })}</span>
+        ) : (
+          <span aria-hidden />
+        )}
+        {/* Справа — выплачено в этом месяце */}
+        {debtCategory && debtsBudget > 0 && (
+          <span className="ml-auto">
+            {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
+          </span>
         )}
       </div>
 
