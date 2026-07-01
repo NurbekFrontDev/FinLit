@@ -27,7 +27,7 @@ type Props = {
 }
 
 const rowCls =
-  'flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900/50'
+  'flex items-start gap-2.5 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50'
 
 export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
   const { t } = useLang()
@@ -141,7 +141,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
             type="button"
             onClick={() => setEditItem(item)}
             aria-label={item.title}
-            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-emerald-500/50 text-xs text-emerald-600 transition hover:bg-emerald-500/10 dark:text-emerald-400"
+            className="mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-emerald-500/50 text-xs text-emerald-600 transition hover:bg-emerald-500/10 dark:text-emerald-400"
           >
             ✏️
           </button>
@@ -150,7 +150,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
             type="button"
             onClick={() => onToggle(item)}
             aria-label={item.title}
-            className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
+            className={`mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
               done
                 ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
                 : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'
@@ -159,48 +159,39 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
             {done ? '\u2713' : ''}
           </button>
         )}
-        {dot && <span className="shrink-0 text-xs leading-none">{dot}</span>}
-        {item.icon && <span className="shrink-0">{item.icon}</span>}
-        {isHabit ? (
-          <button
-            type="button"
-            onClick={() => setSheetItem(item)}
-            title={t('habits.openHint')}
-            className="min-w-0 flex-1 text-left"
+        {dot && <span className="mt-1 shrink-0 text-xs leading-none">{dot}</span>}
+        {item.icon && <span className="mt-0.5 shrink-0">{item.icon}</span>}
+        <div className="min-w-0 flex-1">
+          <p
+            className={`break-words text-base font-medium ${
+              done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
+            }`}
           >
-            <p
-              className={`flex items-center gap-1 text-sm font-medium ${
-                done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
-              }`}
-            >
-              <span className="truncate">{item.title}</span>
-              <span className="shrink-0 text-xs">🔁</span>
-            </p>
-            {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1">
-            <p
-              className={`truncate text-sm font-medium ${
-                done ? 'text-neutral-500 line-through dark:text-neutral-400' : ''
-              }`}
-            >
-              {item.title}
-            </p>
-            {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
-          </div>
-        )}
-        {overrides[item.id] && (
-          <span
-            title={t('today.edited')}
-            className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400"
-          >
-            ✎
-          </span>
-        )}
-        {time && (
-          <span className="shrink-0 rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
-        )}
+            <span className="break-words">{item.title}</span>
+            {overrides[item.id] && (
+              <span
+                title={t('today.edited')}
+                className="ml-1 align-middle text-xs text-emerald-600 dark:text-emerald-400"
+              >
+                ✎
+              </span>
+            )}
+            {isHabit && (
+              <button
+                type="button"
+                onClick={() => setSheetItem(item)}
+                title={t('habits.openHint')}
+                className="ml-1 align-middle text-xs"
+              >
+                🔁
+              </button>
+            )}
+          </p>
+          {time && (
+            <p className="mt-0.5 text-[13px] font-medium text-neutral-500 dark:text-neutral-400">{time}</p>
+          )}
+          {item.note && <p className="break-words text-xs text-neutral-500">{item.note}</p>}
+        </div>
       </div>
     )
   }

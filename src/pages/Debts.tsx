@@ -694,9 +694,11 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
           <span aria-hidden />
         )}
         {/* Справа — выплачено в этом месяце */}
-        {debtCategory && debtsBudget > 0 && (
+        {active.length > 0 && (
           <span className="ml-auto">
-            {t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })}
+            {debtsBudget > 0
+              ? t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })
+              : t('debts.paidThisMonthNoBudget', { v: formatSum(paidThisMonth) })}
           </span>
         )}
       </div>
