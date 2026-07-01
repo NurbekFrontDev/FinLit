@@ -107,6 +107,8 @@ export default function Goals() {
   const [wishCategory, setWishCategory] = useState<string>('Цели и хотелки')
   const [wishSub, setWishSub] = useState('')
   const [busy, setBusy] = useState(false)
+  // Форма «Добавить в список желаний» свёрнута по умолчанию; раскрывается по нажатию.
+  const [wishFormOpen, setWishFormOpen] = useState(false)
 
   // Фильтры списка «Хочу купить»: по категории важности и по подкатегории.
   const [filterCat, setFilterCat] = useState<string>('all')
@@ -1048,11 +1050,28 @@ export default function Goals() {
         <h1 className="text-2xl font-semibold">🎯 {t('goals.title')}</h1>
       </div>
 
+      {!wishFormOpen ? (
+        <button
+          type="button"
+          onClick={() => setWishFormOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+        >
+          <span>{t('goals.addWish')}</span>
+          <span className="text-neutral-400">▾</span>
+        </button>
+      ) : (
       <form
         onSubmit={addWish}
         className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
       >
-        <p className="text-sm font-medium">{t('goals.addWish')}</p>
+        <button
+          type="button"
+          onClick={() => setWishFormOpen(false)}
+          className="flex items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+        >
+          <span>{t('goals.addWish')}</span>
+          <span className="text-neutral-400">▴</span>
+        </button>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -1097,6 +1116,7 @@ export default function Goals() {
           {busy ? t('goals.adding') : t('common.add')}
         </button>
       </form>
+      )}
 
       {loading ? (
         <p className="text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>

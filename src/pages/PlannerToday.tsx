@@ -985,10 +985,6 @@ export default function PlannerToday() {
                 </button>
               </div>
 
-              {editDay && (
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('today.editDayHint')}</p>
-              )}
-
               {sections && !reorder && !editDay ? (
                 sectionDefs.map((s) => {
                   const list = items.filter((i) =>

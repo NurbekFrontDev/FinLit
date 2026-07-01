@@ -524,9 +524,6 @@ export default function PlannerFocus() {
           ))}
         </div>
 
-        <p className="max-w-xs text-center text-sm text-neutral-500 dark:text-neutral-400">
-          {t('focus.tapHint')}
-        </p>
       </div>
 
       {/* Дело, на котором фокус */}

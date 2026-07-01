@@ -45,6 +45,8 @@ export default function CryptoOverview() {
   const [aNote, setANote] = useState('')
   const [errValue, setErrValue] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Форма добавления месяца свёрнута по умолчанию; раскрывается по нажатию.
+  const [addOpen, setAddOpen] = useState(false)
 
   // Время последнего обновления живых цен (для индикатора «Цены обновлены: HH:MM»).
   const [pricedAt, setPricedAt] = useState<string | null>(null)
@@ -261,9 +263,26 @@ export default function CryptoOverview() {
 
       {/* Добавление / обновление месяца (стоимость на начало, депозит, конец).
           Подробная картина по месяцам теперь живёт во вкладке «История». */}
+      {!addOpen ? (
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+        >
+          <span>{t('ov.addMonth')}</span>
+          <span className="text-neutral-400">▾</span>
+        </button>
+      ) : (
       <div className={cardCls}>
         <div>
-          <div className="mb-3 text-sm font-medium">{t('ov.addMonth')}</div>
+          <button
+            type="button"
+            onClick={() => setAddOpen(false)}
+            className="mb-3 flex w-full items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+          >
+            <span>{t('ov.addMonth')}</span>
+            <span className="text-neutral-400">▴</span>
+          </button>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -359,6 +378,7 @@ export default function CryptoOverview() {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -133,11 +133,6 @@ export default function UsageCard() {
             )
           })}
 
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            {ru
-              ? 'Бесплатные тарифы: база 500 МБ, файлы 1 ГБ, трафик Supabase 5 ГБ/мес, Vercel 100 ГБ/мес.'
-              : 'Free tiers: DB 500 MB, files 1 GB, Supabase egress 5 GB/mo, Vercel 100 GB/mo.'}
-          </p>
         </div>
       )}
     </div>

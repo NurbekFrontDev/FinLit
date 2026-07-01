@@ -586,7 +586,6 @@ export default function PlannerItems() {
           <span>{form.important ? '⭐' : '☆'}</span>
           <span>{t('items.important')}</span>
         </button>
-        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t('items.importantHint')}</p>
       </div>
 
       <div>

@@ -46,6 +46,8 @@ export default function CryptoFutures() {
   const [errSymbol, setErrSymbol] = useState(false)
   const [errMargin, setErrMargin] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Форма добавления позиции свёрнута по умолчанию; раскрывается по нажатию.
+  const [addOpen, setAddOpen] = useState(false)
 
   // Закрытие позиции
   const [closingId, setClosingId] = useState<string | null>(null)
@@ -321,9 +323,26 @@ export default function CryptoFutures() {
         </div>
       )}
 
-      {/* Форма добавления позиции */}
+      {/* Форма добавления позиции — свёрнута по умолчанию, раскрывается по нажатию. */}
+      {!addOpen ? (
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+        >
+          <span>{t('fut.add')}</span>
+          <span className="text-neutral-400">▾</span>
+        </button>
+      ) : (
       <div className={cardCls}>
-        <div className="mb-3 text-sm font-medium">{t('fut.add')}</div>
+        <button
+          type="button"
+          onClick={() => setAddOpen(false)}
+          className="mb-3 flex w-full items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+        >
+          <span>{t('fut.add')}</span>
+          <span className="text-neutral-400">▴</span>
+        </button>
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -396,6 +415,7 @@ export default function CryptoFutures() {
           </button>
         </div>
       </div>
+      )}
 
       <ConfirmDialog
         open={toDelete !== null}

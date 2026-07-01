@@ -67,6 +67,8 @@ export default function CryptoPortfolio({ portfolio }: Props) {
   const [aPrice, setAPrice] = useState('')
   const [aDate, setADate] = useState(todayISO())
   const [adding, setAdding] = useState(false)
+  // Форма добавления актива свёрнута по умолчанию; раскрывается по нажатию.
+  const [addOpen, setAddOpen] = useState(false)
 
   // Форма сделки (для раскрытого актива).
   const [tType, setTType] = useState<TxType>('buy')
@@ -350,9 +352,26 @@ export default function CryptoPortfolio({ portfolio }: Props) {
         </div>
       )}
 
-      {/* Форма добавления актива — выше списка монет, чтобы новые монеты добавлялись ниже. */}
+      {/* Форма добавления актива — свёрнута по умолчанию, раскрывается по нажатию. */}
+      {!addOpen ? (
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium transition hover:border-emerald-400 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:border-emerald-600"
+        >
+          <span>{t('inv.addAsset')}</span>
+          <span className="text-neutral-400">▾</span>
+        </button>
+      ) : (
       <div className={cardCls}>
-        <div className="mb-3 text-sm font-medium">{t('inv.addAsset')}</div>
+        <button
+          type="button"
+          onClick={() => setAddOpen(false)}
+          className="mb-3 flex w-full items-center justify-between text-sm font-medium text-neutral-500 transition hover:text-neutral-800 dark:hover:text-neutral-200"
+        >
+          <span>{t('inv.addAsset')}</span>
+          <span className="text-neutral-400">▴</span>
+        </button>
         <div className="grid gap-2 sm:grid-cols-2">
           <div>
             <label className={labelCls}>{t('inv.symbol')}</label>
@@ -413,6 +432,7 @@ export default function CryptoPortfolio({ portfolio }: Props) {
           </button>
         </div>
       </div>
+      )}
 
       {/* Линия и фильтр перед списком активов */}
       {assets.length > 0 && (

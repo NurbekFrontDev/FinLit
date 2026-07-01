@@ -44,8 +44,18 @@ export default function Dashboard() {
   const { t, tr } = useLang()
   const navigate = useNavigate()
   const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
+  // Выбранный месяц дашборда (по умолчанию текущий). Стрелки листают месяцы,
+  // чтобы видеть «план против факта», доход и расходы за конкретный месяц.
+  const [viewYear, setViewYear] = useState(now.getFullYear())
+  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1) // 1..12
+  const year = viewYear
+  const month = viewMonth
+  const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth() + 1
+  const shiftMonth = (delta: number) => {
+    const d = new Date(viewYear, viewMonth - 1 + delta, 1)
+    setViewYear(d.getFullYear())
+    setViewMonth(d.getMonth() + 1)
+  }
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -233,8 +243,42 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="sticky top-0 z-20 -mx-4 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85">
-        <h1 className="text-2xl font-semibold">🏠 {t('dash.title')} · {monthName(month - 1)}</h1>
+      <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between gap-2 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85">
+        <h1 className="text-2xl font-semibold">🏠 {t('dash.title')}</h1>
+        {/* Переключатель месяца в стиле «Доходов»: стрелки листают месяцы,
+            тап по названию возвращает к текущему месяцу. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => shiftMonth(-1)}
+            aria-label={t('cal.prev')}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewYear(now.getFullYear())
+              setViewMonth(now.getMonth() + 1)
+            }}
+            className={`min-w-[6.5rem] rounded-lg px-2 py-1 text-center text-sm font-medium transition ${
+              isCurrentMonth
+                ? 'text-neutral-600 dark:text-neutral-300'
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}
+          >
+            {monthName(month - 1)} {year}
+          </button>
+          <button
+            type="button"
+            onClick={() => shiftMonth(1)}
+            aria-label={t('cal.next')}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          >
+            ›
+          </button>
+        </div>
       </div>
 
       {loading ? (
