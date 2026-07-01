@@ -97,7 +97,7 @@ export default function Layout() {
       </header>
 
       {/* Content (scroll container) */}
-      <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 [scrollbar-gutter:stable_both-edges] md:pb-0">
         <div className="mx-auto max-w-3xl px-4 pb-6">
           <Outlet />
         </div>

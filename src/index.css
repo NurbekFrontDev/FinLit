@@ -139,6 +139,21 @@ button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
+/* Курсор-указатель на всех кликабельных элементах во всём приложении:
+   кнопки, ссылки, элементы с role="button", свёртки (summary) и выпадающие списки. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary,
+label[for],
+select {
+  cursor: pointer;
+}
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Плавная прокрутка + аккуратное поведение на мобильных.
    Это убирает «покадровость» программных прокруток и делает скролл мягче. */
 html {
