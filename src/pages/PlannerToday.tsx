@@ -4,6 +4,7 @@ import { useLang } from '../lib/i18n'
 import { formatDateHuman, monthName } from '../lib/db'
 import HabitSheet from '../components/HabitSheet'
 import DayPanel from '../components/DayPanel'
+import DayEditSheet from '../components/DayEditSheet'
 import {
   loadDay,
   toggleDone,
@@ -20,6 +21,7 @@ import {
   type TimeOfDay,
   type DaySummary,
   type DayMark,
+  type PlannerDayOverride,
 } from '../lib/planner'
 import EnergyCharacter from '../components/EnergyCharacter'
 
@@ -85,6 +87,10 @@ export default function PlannerToday() {
   const [reorder, setReorder] = useState(false)
   const [sheetItem, setSheetItem] = useState<PlannerItem | null>(null)
   const [energyOpen, setEnergyOpen] = useState(false)
+  // Режим «Изменить день»: правка дела только на эту дату (не трогая шаблон).
+  const [editDay, setEditDay] = useState(false)
+  const [editItem, setEditItem] = useState<PlannerItem | null>(null)
+  const [overrides, setOverrides] = useState<Record<string, PlannerDayOverride>>({})
   const [stripSummaries, setStripSummaries] = useState<Record<string, DaySummary>>({})
 
   // ===== Виды «Неделя / Месяц / Год» (календарь) =====
@@ -129,6 +135,7 @@ export default function PlannerToday() {
     if (!user || view !== 'today') return
     let active = true
     setReorder(false)
+    setEditDay(false)
     ;(async () => {
       try {
         setLoading(true)
@@ -139,6 +146,7 @@ export default function PlannerToday() {
         if (!active) return
         setItems(day.items)
         setLogs(day.logs)
+        setOverrides(day.overrides)
         setSections(sec)
         setError(null)
       } catch (e) {
@@ -216,6 +224,7 @@ export default function PlannerToday() {
       const day = await loadDay(user.id, date)
       setItems(day.items)
       setLogs(day.logs)
+      setOverrides(day.overrides)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -437,20 +446,29 @@ export default function PlannerToday() {
         key={item.id}
         role="button"
         tabIndex={0}
-        onClick={() => onToggle(item)}
+        onClick={() => (editDay ? setEditItem(item) : onToggle(item))}
         aria-label={item.title}
-        className={`flex cursor-pointer items-start gap-2.5 ${cardCls}${done ? ' opacity-60' : ''} transition active:scale-[.99]`}
+        className={`flex cursor-pointer items-start gap-2.5 ${cardCls}${done && !editDay ? ' opacity-60' : ''} transition active:scale-[.99]`}
       >
-        <span
-          aria-hidden
-          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold transition ${
-            done
-              ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
-              : 'border-neutral-300 dark:border-neutral-600'
-          }`}
-        >
-          {done ? '\u2713' : ''}
-        </span>
+        {editDay ? (
+          <span
+            aria-hidden
+            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-emerald-500/50 text-[11px]"
+          >
+            ✏️
+          </span>
+        ) : (
+          <span
+            aria-hidden
+            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-bold transition ${
+              done
+                ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
+                : 'border-neutral-300 dark:border-neutral-600'
+            }`}
+          >
+            {done ? '\u2713' : ''}
+          </span>
+        )}
         {dot && <span className="mt-1 shrink-0 text-xs leading-none">{dot}</span>}
         {item.important && <span className="mt-1 shrink-0 text-xs leading-none">⭐</span>}
         {item.icon && <span className="mt-0.5 shrink-0">{item.icon}</span>}
@@ -461,6 +479,14 @@ export default function PlannerToday() {
             }`}
           >
             <span className="break-words">{item.title}</span>
+            {overrides[item.id] && (
+              <span
+                title={t('today.edited')}
+                className="ml-1 align-middle text-xs text-emerald-600 dark:text-emerald-400"
+              >
+                ✎
+              </span>
+            )}
             {isHabit && (
               <button
                 type="button"
@@ -923,21 +949,44 @@ export default function PlannerToday() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('today.empty')}</p>
           ) : (
             <>
-              {items.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReorder((v) => !v)
+                      setEditDay(false)
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                      reorder
+                        ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                        : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {reorder ? t('common.reorderDone') : t('common.reorder')}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setReorder((v) => !v)}
-                  className={`self-start rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-                    reorder
+                  onClick={() => {
+                    setEditDay((v) => !v)
+                    setReorder(false)
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    editDay
                       ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
                       : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
                   }`}
                 >
-                  {reorder ? t('common.reorderDone') : t('common.reorder')}
+                  {editDay ? t('today.editDayDone') : t('today.editDay')}
                 </button>
+              </div>
+
+              {editDay && (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('today.editDayHint')}</p>
               )}
 
-              {sections && !reorder ? (
+              {sections && !reorder && !editDay ? (
                 sectionDefs.map((s) => {
                   const list = items.filter((i) =>
                     s.key === 'none' ? !i.time_of_day : i.time_of_day === s.key,
@@ -1018,6 +1067,18 @@ export default function PlannerToday() {
           date={panelDate}
           onClose={() => setPanelDate(null)}
           onChanged={reloadSummaries}
+        />
+      )}
+
+      {/* Окно правки дела на конкретный день (вид «Сегодня»). */}
+      {editItem && user && (
+        <DayEditSheet
+          userId={user.id}
+          date={date}
+          item={editItem}
+          hasOverride={!!overrides[editItem.id]}
+          onClose={() => setEditItem(null)}
+          onSaved={reload}
         />
       )}
     </div>

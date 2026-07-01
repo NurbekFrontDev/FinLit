@@ -255,15 +255,29 @@ export function isItemOnDate(item: PlannerItem, dateStr: string): boolean {
   }
 }
 
+// Персональная правка дела на КОНКРЕТНЫЙ день (не меняет шаблон «Мои дела»).
+// Если в planner_day_overrides есть строка для дела на дату — её поля
+// (время/секция/важность/заметка) заменяют поля из planner_items при загрузке
+// этого дня. Другие дни и сам шаблон остаются нетронутыми.
+export type PlannerDayOverride = {
+  item_id: string
+  time_of_day: TimeOfDay
+  at_time_start: string | null
+  at_time_end: string | null
+  priority: Priority | null
+  note: string | null
+}
+
 export type DayData = {
   items: PlannerItem[] // дела этого дня в нужном порядке
   logs: Record<string, PlannerLog> // itemId -> отметка за этот день
+  overrides: Record<string, PlannerDayOverride> // itemId -> персональная правка этого дня
 }
 
 // Загружает все дела пользователя, отбирает попадающие в этот день, подтягивает
 // отметки и ручной порядок именно для этого дня, и сортирует список.
 export async function loadDay(userId: string, dateStr: string): Promise<DayData> {
-  const [itemsRes, logsRes, orderRes] = await Promise.all([
+  const [itemsRes, logsRes, orderRes, ovRes] = await Promise.all([
     supabase
       .from('planner_items')
       .select(ITEM_COLS)
@@ -279,13 +293,38 @@ export async function loadDay(userId: string, dateStr: string): Promise<DayData>
       .select('item_id, sort_order')
       .eq('user_id', userId)
       .eq('date', dateStr),
+    supabase
+      .from('planner_day_overrides')
+      .select('item_id, time_of_day, at_time_start, at_time_end, priority, note')
+      .eq('user_id', userId)
+      .eq('date', dateStr),
   ])
   if (itemsRes.error) throw itemsRes.error
   if (logsRes.error) throw logsRes.error
   if (orderRes.error) throw orderRes.error
+  if (ovRes.error) throw ovRes.error
 
   const all = (itemsRes.data ?? []) as PlannerItem[]
-  const occurring = all.filter((it) => isItemOnDate(it, dateStr))
+
+  // Персональные правки дел на ЭТОТ день (время/секция/важность/заметка).
+  const ovMap = new Map<string, PlannerDayOverride>()
+  for (const o of (ovRes.data ?? []) as PlannerDayOverride[]) ovMap.set(o.item_id, o)
+
+  // Отбираем дела дня и накладываем правки поверх шаблона (правка выигрывает).
+  const occurring = all
+    .filter((it) => isItemOnDate(it, dateStr))
+    .map((it) => {
+      const ov = ovMap.get(it.id)
+      if (!ov) return it
+      return {
+        ...it,
+        time_of_day: ov.time_of_day,
+        at_time_start: ov.at_time_start,
+        at_time_end: ov.at_time_end,
+        priority: ov.priority ?? it.priority,
+        note: ov.note,
+      }
+    })
 
   // Ручной порядок дня (если задавали перетаскиванием) имеет приоритет.
   const orderMap = new Map<string, number>()
@@ -306,7 +345,10 @@ export async function loadDay(userId: string, dateStr: string): Promise<DayData>
   const logs: Record<string, PlannerLog> = {}
   for (const l of (logsRes.data ?? []) as PlannerLog[]) logs[l.item_id] = l
 
-  return { items: occurring, logs }
+  const overrides: Record<string, PlannerDayOverride> = {}
+  for (const [id, ov] of ovMap) overrides[id] = ov
+
+  return { items: occurring, logs, overrides }
 }
 
 // Отметить/снять выполнение дела за день.
@@ -357,6 +399,56 @@ export async function saveDayOrder(
   const { error } = await supabase
     .from('planner_day_order')
     .upsert(rows, { onConflict: 'user_id,item_id,date' })
+  if (error) throw error
+}
+
+// ===== Персональная правка дела на КОНКРЕТНЫЙ день =====
+// Меняет время/секцию/важность/заметку дела ТОЛЬКО на указанную дату, не трогая
+// шаблон «Мои дела» (planner_items) и другие дни. При загрузке дня loadDay
+// наложит эти поля поверх шаблона (см. planner_day_overrides).
+export type DayOverridePatch = {
+  time_of_day: TimeOfDay
+  at_time_start: string | null
+  at_time_end: string | null
+  priority: Priority
+  note: string | null
+}
+
+export async function saveDayOverride(
+  userId: string,
+  itemId: string,
+  dateStr: string,
+  patch: DayOverridePatch,
+): Promise<void> {
+  const { error } = await supabase.from('planner_day_overrides').upsert(
+    {
+      user_id: userId,
+      item_id: itemId,
+      date: dateStr,
+      time_of_day: patch.time_of_day,
+      at_time_start: patch.at_time_start,
+      at_time_end: patch.at_time_end,
+      priority: patch.priority,
+      note: patch.note,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,item_id,date' },
+  )
+  if (error) throw error
+}
+
+// Убирает персональную правку дня -> дело снова берёт значения из шаблона.
+export async function clearDayOverride(
+  userId: string,
+  itemId: string,
+  dateStr: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('planner_day_overrides')
+    .delete()
+    .eq('user_id', userId)
+    .eq('item_id', itemId)
+    .eq('date', dateStr)
   if (error) throw error
 }
 

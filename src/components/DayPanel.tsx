@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLang } from '../lib/i18n'
 import { formatDateHuman } from '../lib/db'
 import HabitSheet from './HabitSheet'
+import DayEditSheet from './DayEditSheet'
 import { useAnimatedMount } from '../lib/useAnimatedMount'
 import {
   loadDay,
@@ -10,6 +11,7 @@ import {
   PRIORITY_DOT,
   type PlannerItem,
   type PlannerLog,
+  type PlannerDayOverride,
 } from '../lib/planner'
 
 // Окно одного дня (П-6). Открывается по нажатию на день в календаре.
@@ -36,6 +38,10 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
   const [logs, setLogs] = useState<Record<string, PlannerLog>>({})
   const [loading, setLoading] = useState(true)
   const [sheetItem, setSheetItem] = useState<PlannerItem | null>(null)
+  // Режим правки дел только на этот день (не трогая шаблон).
+  const [editDay, setEditDay] = useState(false)
+  const [editItem, setEditItem] = useState<PlannerItem | null>(null)
+  const [overrides, setOverrides] = useState<Record<string, PlannerDayOverride>>({})
 
   const close = () => setOpen(false)
   useEffect(() => {
@@ -46,6 +52,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
     const day = await loadDay(userId, date)
     setItems(day.items)
     setLogs(day.logs)
+    setOverrides(day.overrides)
   }
 
   useEffect(() => {
@@ -57,6 +64,7 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
         if (!active) return
         setItems(day.items)
         setLogs(day.logs)
+        setOverrides(day.overrides)
       } finally {
         if (active) setLoading(false)
       }
@@ -127,19 +135,30 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
     const time = timeLabel(item)
     const isHabit = item.type === 'habit'
     return (
-      <div key={item.id} className={`${rowCls}${done ? ' opacity-60' : ''}`}>
-        <button
-          type="button"
-          onClick={() => onToggle(item)}
-          aria-label={item.title}
-          className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
-            done
-              ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
-              : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'
-          }`}
-        >
-          {done ? '\u2713' : ''}
-        </button>
+      <div key={item.id} className={`${rowCls}${done && !editDay ? ' opacity-60' : ''}`}>
+        {editDay ? (
+          <button
+            type="button"
+            onClick={() => setEditItem(item)}
+            aria-label={item.title}
+            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-emerald-500/50 text-xs text-emerald-600 transition hover:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            ✏️
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggle(item)}
+            aria-label={item.title}
+            className={`flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition ${
+              done
+                ? 'border-emerald-500 bg-emerald-500 text-neutral-950'
+                : 'border-neutral-300 hover:border-emerald-500 dark:border-neutral-600'
+            }`}
+          >
+            {done ? '\u2713' : ''}
+          </button>
+        )}
         {dot && <span className="shrink-0 text-xs leading-none">{dot}</span>}
         {item.icon && <span className="shrink-0">{item.icon}</span>}
         {isHabit ? (
@@ -170,6 +189,14 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
             </p>
             {item.note && <p className="truncate text-xs text-neutral-500">{item.note}</p>}
           </div>
+        )}
+        {overrides[item.id] && (
+          <span
+            title={t('today.edited')}
+            className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400"
+          >
+            ✎
+          </span>
         )}
         {time && (
           <span className="shrink-0 rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-neutral-700 shadow-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800 dark:text-neutral-200 dark:ring-neutral-700">{time}</span>
@@ -228,6 +255,26 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
             </div>
           )}
 
+          {/* Переключатель «Изменить день»: правка дел только на эту дату. */}
+          {!loading && items.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setEditDay((v) => !v)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  editDay
+                    ? 'bg-emerald-500 text-neutral-950 hover:bg-emerald-400'
+                    : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {editDay ? t('today.editDayDone') : t('today.editDay')}
+              </button>
+              {editDay && (
+                <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t('today.editDayHint')}</p>
+              )}
+            </div>
+          )}
+
           {/* Список дел дня */}
           {loading ? (
             <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">{t('common.loading')}</p>
@@ -246,6 +293,21 @@ export default function DayPanel({ userId, date, onClose, onChanged }: Props) {
           date={date}
           onClose={() => setSheetItem(null)}
           onChanged={() => {
+            void reload()
+            onChanged()
+          }}
+        />
+      )}
+
+      {/* Окно правки дела на конкретный день. */}
+      {editItem && (
+        <DayEditSheet
+          userId={userId}
+          date={date}
+          item={editItem}
+          hasOverride={!!overrides[editItem.id]}
+          onClose={() => setEditItem(null)}
+          onSaved={() => {
             void reload()
             onChanged()
           }}
