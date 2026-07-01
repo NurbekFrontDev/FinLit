@@ -1517,6 +1517,7 @@ const UI: Record<Lang, Record<string, string>> = {
     'debts.totalLeft': 'Left to repay: {v}',
     'debts.budgetThisMonth': '“Debt” category this month: {v}',
     'debts.paidThisMonth': 'Paid this month: {v} of {b}',
+    'debts.paidThisMonthNoBudget': 'Paid this month: {v}',
     'debts.canPayThisMonth': 'You can still pay: {v}',
     'debts.empty': 'No debts — keep it up! 🎉',
     'debts.paid': 'Paid',

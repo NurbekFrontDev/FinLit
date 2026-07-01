@@ -67,6 +67,15 @@ export default function DayEditSheet({ userId, date, item, hasOverride, onClose,
     if (!visible) onClose()
   }, [visible, onClose])
 
+  // Пока окно открыто — блокируем прокрутку фона: двигается только само окно.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
+
   const today = todayStr()
   const dayLabel = date === today ? t('today.today') : formatDateHuman(date)
 
@@ -106,7 +115,7 @@ export default function DayEditSheet({ userId, date, item, hasOverride, onClose,
       onClick={close}
     >
       <div
-        className={`${open ? 'animate-dialog' : 'animate-dialog-out'} max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-lg sm:rounded-2xl`}
+        className={`${open ? 'animate-dialog' : 'animate-dialog-out'} max-h-[90vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900 sm:max-w-lg sm:rounded-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Шапка */}
@@ -127,10 +136,6 @@ export default function DayEditSheet({ userId, date, item, hasOverride, onClose,
             ✕
           </button>
         </div>
-
-        <p className="mt-2 rounded-lg bg-neutral-50 p-2 text-xs text-neutral-500 dark:bg-neutral-800/40 dark:text-neutral-400">
-          {t('dayEdit.desc')}
-        </p>
 
         {/* Секция дня */}
         <div className="mt-4">

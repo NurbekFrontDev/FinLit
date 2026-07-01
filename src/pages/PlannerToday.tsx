@@ -166,7 +166,7 @@ export default function PlannerToday() {
     let active = true
     ;(async () => {
       try {
-        const s = await loadDaySummaries(user.id, addDays(date, -6), date)
+        const s = await loadDaySummaries(user.id, addDays(today, -6), today)
         if (active) setStripSummaries(s)
       } catch {
         // некритично для ленты колец
@@ -825,7 +825,10 @@ export default function PlannerToday() {
           </button>
           <div className="flex flex-1 justify-between gap-1">
             {Array.from({ length: 7 }, (_, i) => {
-              const dStr = addDays(date, i - 6)
+              // Лента фиксирована относительно СЕГОДНЯ (6 прошедших дней + сегодня
+              // справа). Выбор дня не сдвигает ленту — подсветка просто переезжает
+              // на нажатый день.
+              const dStr = addDays(today, i - 6)
               const dt = new Date(dStr + 'T00:00:00')
               const wd = (dt.getDay() + 6) % 7
               const sel = dStr === date
@@ -845,7 +848,7 @@ export default function PlannerToday() {
                   aria-label={WEEKDAYS[wd]}
                   className="flex min-w-0 flex-1 flex-col items-center"
                 >
-                  <span className={`relative flex aspect-square w-full max-w-[44px] items-center justify-center rounded-full transition ${sel ? 'ring-2 ring-emerald-400/60 shadow-[0_0_12px_2px_rgba(16,185,129,0.45)]' : ''}`}>
+                  <span className={`relative flex aspect-square w-full max-w-[44px] items-center justify-center rounded-full transition ${sel ? 'bg-neutral-200/80 dark:bg-white/15' : ''}`}>
                     <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                       <circle
                         cx="24"

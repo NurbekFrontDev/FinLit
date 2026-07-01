@@ -678,8 +678,8 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
       <div
         className={
           embedded
-            ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400'
-            : 'sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200/70 bg-white/85 px-4 py-3 text-xs text-neutral-500 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85 dark:text-neutral-400'
+            ? 'flex flex-col gap-1'
+            : 'sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-neutral-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-950/85'
         }
       >
         {!embedded && (
@@ -687,19 +687,20 @@ export default function Debts({ embedded = false }: { embedded?: boolean }) {
             💳 {t('debts.title')}
           </h1>
         )}
-        {/* Слева — сколько осталось выплатить */}
-        {active.length > 0 ? (
-          <span>{t('debts.totalLeft', { v: formatSum(totalLeft) })}</span>
-        ) : (
-          <span aria-hidden />
-        )}
-        {/* Справа — выплачено в этом месяце */}
+        {/* Итоги одной строкой: осталось выплатить · выплачено в этом месяце.
+            Маленькая точка посередине — разделитель. */}
         {active.length > 0 && (
-          <span className="ml-auto">
-            {debtsBudget > 0
-              ? t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })
-              : t('debts.paidThisMonthNoBudget', { v: formatSum(paidThisMonth) })}
-          </span>
+          <div className="flex w-full min-w-0 items-center justify-between gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 sm:text-xs">
+            <span className="truncate">{t('debts.totalLeft', { v: formatSum(totalLeft) })}</span>
+            <span aria-hidden className="shrink-0 text-neutral-400 dark:text-neutral-600">
+              ·
+            </span>
+            <span className="truncate text-right">
+              {debtsBudget > 0
+                ? t('debts.paidThisMonth', { v: formatSum(paidThisMonth), b: formatSum(debtsBudget) })
+                : t('debts.paidThisMonthNoBudget', { v: formatSum(paidThisMonth) })}
+            </span>
+          </div>
         )}
       </div>
 
