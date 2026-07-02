@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import { initNativeAuth } from './lib/native'
+import { initNotifications } from './lib/notifications'
+import { maybeAutoBackup } from './lib/backup'
 import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import Layout from './components/Layout'
@@ -110,6 +112,42 @@ function App() {
     const cleanup = initNativeAuth()
     return cleanup
   }, [])
+
+  // Локальные уведомления и авто-бэкап (А-6): при запуске планируем уведомления
+  // на устройстве, запускаем авто-бэкап (не чаще раза в N дней) и обрабатываем
+  // тап по уведомлению — переходим на нужный экран.
+  useEffect(() => {
+    if (!userId) return
+    let active = true
+    let handle: { remove: () => void } | undefined
+
+    ;(async () => {
+      // Авто-бэкап работает и в вебе, и на телефоне (только в облако).
+      void maybeAutoBackup(userId)
+
+      if (!Capacitor.isNativePlatform()) return
+      await initNotifications(userId)
+      try {
+        const { LocalNotifications } = await import('@capacitor/local-notifications')
+        const h = await LocalNotifications.addListener(
+          'localNotificationActionPerformed',
+          (action) => {
+            const path = (action?.notification?.extra as { path?: string } | undefined)?.path
+            if (path) navigate(path)
+          },
+        )
+        if (active) handle = h
+        else h.remove()
+      } catch {
+        // уведомления не критичны для работы приложения
+      }
+    })()
+
+    return () => {
+      active = false
+      handle?.remove()
+    }
+  }, [userId, navigate])
 
   // Аппаратная кнопка «назад» на Android: сначала уходим на предыдущий
   // экран внутри приложения, и только с «корневых» экранов модулей (FinLit/Планировщик)
