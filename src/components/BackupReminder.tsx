@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useLang } from '../lib/i18n'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { runBackup } from '../lib/backup'
+import { runBackup, backupTargetLabel } from '../lib/backup'
+import { showToast } from '../lib/toast'
 
 // Напоминалка о бэкапе раз в 30 дней.
 // Дата последнего бэкапа и «отложить» хранятся В БД (таблица app_settings),
@@ -17,7 +18,7 @@ function daysBetween(a: Date, b: Date): number {
 }
 
 export default function BackupReminder() {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { user } = useAuth()
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -62,6 +63,12 @@ export default function BackupReminder() {
       const res = await runBackup(user.id)
       if (res.cloud || res.file) {
         setMsg(t('backup.okMsg', { rows: String(res.rowCount) }))
+        const place = backupTargetLabel(res.target, lang === 'en' ? 'en' : 'ru')
+        showToast(
+          lang === 'en'
+            ? `Backup saved: ${place} (${res.rowCount} records)`
+            : `Бэкап сохранён: ${place} (${res.rowCount} записей)`,
+        )
         setTimeout(() => setVisible(false), 1600)
       } else {
         setMsg(t('backup.failMsg'))

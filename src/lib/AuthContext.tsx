@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase'
 
 type AuthContextType = {
@@ -31,6 +32,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
 
     return () => listener.subscription.unsubscribe()
+  }, [])
+
+  // Фикс бага: после возврата в приложение (на телефоне было свёрнуто несколько
+  // минут) принудительно перечитываем сессию из хранилища. WebView иногда теряет
+  // состояние в памяти, и без этого показывался экран входа, хотя токен ещё валиден.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    let handle: { remove: () => void } | undefined
+    ;(async () => {
+      try {
+        const { App } = await import('@capacitor/app')
+        const h = await App.addListener('resume', async () => {
+          try {
+            const { data } = await supabase.auth.getSession()
+            if (data.session) setSession(data.session)
+          } catch {
+            // не критично
+          }
+        })
+        handle = h
+      } catch {
+        // не критично
+      }
+    })()
+    return () => handle?.remove()
   }, [])
 
   const signIn = async (email: string, password: string) => {

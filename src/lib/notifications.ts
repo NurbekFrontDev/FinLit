@@ -31,8 +31,8 @@ export const NOTIF_DEFAULTS: NotifSettings = {
 // Варианты «за сколько напомнить» до времени дела (минуты). 0 = точно в срок.
 export const OFFSET_OPTIONS = [0, 5, 10, 15, 30]
 
-// Варианты периодичности воды (часы).
-export const WATER_EVERY_OPTIONS = [1, 2, 3, 4]
+// Варианты периодичности воды (часы). 1.5 = каждые полтора часа.
+export const WATER_EVERY_OPTIONS = [1, 1.5, 2, 3, 4]
 
 export async function loadNotifSettings(userId: string): Promise<NotifSettings> {
   try {

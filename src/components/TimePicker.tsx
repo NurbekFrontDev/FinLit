@@ -54,6 +54,7 @@ export default function TimePicker({ value, onChange, placeholder }: Props) {
   const { lang } = useLang()
   const [open, setOpen] = useState(false)
   const [alignRight, setAlignRight] = useState(false)
+  const [alignTop, setAlignTop] = useState(false)
   const show = useAnimatedMount(open)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -65,6 +66,9 @@ export default function TimePicker({ value, onChange, placeholder }: Props) {
       if (next && ref.current) {
         const r = ref.current.getBoundingClientRect()
         setAlignRight(r.left + 232 > window.innerWidth - 8)
+        // Если снизу мало места — раскрываем вверх, чтобы колонки времени не
+        // срезались нижним краем экрана и кнопкой ассистента.
+        setAlignTop(r.bottom + 300 > window.innerHeight - 8)
       }
       return next
     })
@@ -101,7 +105,9 @@ export default function TimePicker({ value, onChange, placeholder }: Props) {
             open ? 'animate-pop' : 'animate-pop-out'
           } ${
             alignRight ? 'right-0' : 'left-0'
-          } absolute z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
+          } ${
+            alignTop ? 'bottom-full mb-1' : 'top-full mt-1'
+          } absolute z-30 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
         >
           <div className="flex gap-2">
             <div className="flex-1">

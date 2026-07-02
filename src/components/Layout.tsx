@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import BackupReminder from './BackupReminder'
 import AssistantWidget from './AssistantWidget'
+import Toaster from './Toaster'
 import { useLang } from '../lib/i18n'
 import { MODULES, moduleForPath } from '../lib/modules'
 
@@ -126,6 +127,9 @@ export default function Layout() {
       <AssistantWidget />
 
       <BackupReminder />
+
+      {/* Всплывающие тосты (напр. «автобэкап сделан»). */}
+      <Toaster />
     </div>
   )
 }

@@ -18,6 +18,7 @@ const triggerCls =
 // Заменяет браузерный <select>, чтобы вид был единым на всех устройствах.
 export default function Select({ value, options, onChange, placeholder, className }: Props) {
   const [open, setOpen] = useState(false)
+  const [openUp, setOpenUp] = useState(false)
   const show = useAnimatedMount(open)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -35,7 +36,19 @@ export default function Select({ value, options, onChange, placeholder, classNam
     <div ref={ref} className={`relative ${className ?? ''}`}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() =>
+          setOpen((v) => {
+            const next = !v
+            if (next && ref.current) {
+              const r = ref.current.getBoundingClientRect()
+              // Оцениваем высоту меню и раскрываем вверх, если снизу мало места
+              // (иначе список упирается в низ экрана / кнопку ассистента).
+              const estimated = Math.min(options.length * 40 + 12, 252)
+              setOpenUp(r.bottom + estimated > window.innerHeight - 12)
+            }
+            return next
+          })
+        }
         className={triggerCls}
       >
         <span className={selected ? '' : 'text-neutral-400'}>
@@ -58,7 +71,9 @@ export default function Select({ value, options, onChange, placeholder, classNam
         <div
           className={`${
             open ? 'animate-pop' : 'animate-pop-out'
-          } absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
+          } ${
+            openUp ? 'bottom-full mb-1' : 'top-full mt-1'
+          } absolute z-30 max-h-60 w-max min-w-full max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900`}
         >
           {options.map((o) => {
             const isSel = String(o.value) === String(value)
@@ -70,7 +85,7 @@ export default function Select({ value, options, onChange, placeholder, classNam
                   onChange(String(o.value))
                   setOpen(false)
                 }}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+                className={`flex w-full items-center justify-between gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition ${
                   isSel
                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
                     : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'

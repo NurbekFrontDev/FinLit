@@ -4,7 +4,9 @@ import { useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import { initNativeAuth } from './lib/native'
 import { initNotifications } from './lib/notifications'
-import { maybeAutoBackup } from './lib/backup'
+import { maybeAutoBackup, backupTargetLabel } from './lib/backup'
+import { showToast } from './lib/toast'
+import { useLang } from './lib/i18n'
 import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import Layout from './components/Layout'
@@ -33,8 +35,13 @@ function NotFoundRedirect({ fallback }: { fallback: string }) {
 
 function App() {
   const { session, loading } = useAuth()
+  const { lang } = useLang()
   const location = useLocation()
   const navigate = useNavigate()
+  // Зеркало языка в ref, чтобы читать актуальное значение внутри эффекта авто-бэкапа,
+  // не добавляя lang в его зависимости (иначе эффект перезапускался бы).
+  const langRef = useRef(lang)
+  langRef.current = lang
   const [lastPath, setLastPath] = useState('/')
   const [restored, setRestored] = useState(false)
   // Восстановление последней вкладки должно срабатывать ТОЛЬКО один раз при
@@ -122,8 +129,18 @@ function App() {
     let handle: { remove: () => void } | undefined
 
     ;(async () => {
-      // Авто-бэкап работает и в вебе, и на телефоне (только в облако).
-      void maybeAutoBackup(userId)
+      // Авто-бэкап работает и в вебе, и на телефоне (только в облако). Если бэкап
+      // действительно сделан — показываем всплывающее уведомление.
+      void maybeAutoBackup(userId).then((r) => {
+        if (!r) return
+        const l = langRef.current === 'en' ? 'en' : 'ru'
+        const place = backupTargetLabel(r.target, l)
+        showToast(
+          l === 'en'
+            ? `Auto-backup saved to ${place} (${r.rowCount} records)`
+            : `Авто-бэкап сохранён: ${place} (${r.rowCount} записей)`,
+        )
+      })
 
       if (!Capacitor.isNativePlatform()) return
       await initNotifications(userId)

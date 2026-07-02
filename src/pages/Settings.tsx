@@ -7,7 +7,14 @@ import UsageCard from '../components/UsageCard'
 import { useLang } from '../lib/i18n'
 import { loadCryptoAutoExpense, saveCryptoAutoExpense } from '../lib/db'
 import { supabase } from '../lib/supabase'
-import { runBackup } from '../lib/backup'
+import {
+  runBackup,
+  backupTargetLabel,
+  supportsFsAccess,
+  pickBackupDir,
+  getSavedDirName,
+} from '../lib/backup'
+import { showToast } from '../lib/toast'
 
 export default function Settings() {
   const { user, signOut } = useAuth()
@@ -18,6 +25,11 @@ export default function Settings() {
   const [backupAuto, setBackupAuto] = useState(false)
   const [backupBusy, setBackupBusy] = useState(false)
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null)
+  const [lastBackupTarget, setLastBackupTarget] = useState<string | null>(null)
+  const [dirName, setDirName] = useState<string | null>(null)
+  // Папку на ПК можно выбрать только в браузерах с File System Access API (Chrome/Edge на ПК).
+  const canPickDir = supportsFsAccess()
 
   useEffect(() => {
     if (!user) return
@@ -42,10 +54,19 @@ export default function Settings() {
       try {
         const { data } = await supabase
           .from('app_settings')
-          .select('backup_auto')
+          .select('backup_auto, last_backup_at, last_backup_target')
           .eq('user_id', user.id)
           .maybeSingle()
-        if (active) setBackupAuto(!!(data as { backup_auto?: boolean } | null)?.backup_auto)
+        if (active) {
+          const d = data as {
+            backup_auto?: boolean
+            last_backup_at?: string | null
+            last_backup_target?: string | null
+          } | null
+          setBackupAuto(!!d?.backup_auto)
+          setLastBackupAt(d?.last_backup_at ?? null)
+          setLastBackupTarget(d?.last_backup_target ?? null)
+        }
       } catch {
         // оставляем выключенным
       }
@@ -54,6 +75,12 @@ export default function Settings() {
       active = false
     }
   }, [user])
+
+  // Подгружаем имя ранее выбранной папки для бэкапов на ПК.
+  useEffect(() => {
+    if (!canPickDir) return
+    void getSavedDirName().then((n) => setDirName(n))
+  }, [canPickDir])
 
   const toggleBackupAuto = async () => {
     if (!user) return
@@ -75,16 +102,30 @@ export default function Settings() {
     setBackupMsg(null)
     try {
       const res = await runBackup(user.id)
-      setBackupMsg(
-        res.cloud || res.file
-          ? t('set.backupOkMsg', { rows: String(res.rowCount) })
-          : t('set.backupFailMsg'),
-      )
+      if (res.cloud || res.file) {
+        setBackupMsg(t('set.backupOkMsg', { rows: String(res.rowCount) }))
+        setLastBackupAt(new Date().toISOString())
+        setLastBackupTarget(res.target)
+        const place = backupTargetLabel(res.target, lang === 'en' ? 'en' : 'ru')
+        showToast(
+          lang === 'en'
+            ? `Backup saved: ${place} (${res.rowCount} records)`
+            : `Бэкап сохранён: ${place} (${res.rowCount} записей)`,
+        )
+      } else {
+        setBackupMsg(t('set.backupFailMsg'))
+      }
     } catch {
       setBackupMsg(t('set.backupFailMsg'))
     } finally {
       setBackupBusy(false)
     }
+  }
+
+  // Выбор папки на ПК (один раз; дальше бэкап пишется туда тихо).
+  const choosePcDir = async () => {
+    const name = await pickBackupDir()
+    if (name) setDirName(name)
   }
 
   const toggleCryptoAuto = async () => {
@@ -160,19 +201,59 @@ export default function Settings() {
       {/* 🛡️ Бэкап данных одной кнопкой */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
         <p className="font-medium">🛡️ {t('set.backup')}</p>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('set.backupHint')}</p>
-        <div className="flex flex-wrap items-center gap-3">
+
+        {/* Инфо о последнем бэкапе (слева) + кнопка «Сделать бэкап» (справа). */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 text-sm text-neutral-500 dark:text-neutral-400">
+            {lastBackupAt ? (
+              <>
+                {lang === 'en' ? 'Last backup: ' : 'Последний бэкап: '}
+                {new Date(lastBackupAt).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')}
+                {', '}
+                {backupTargetLabel(lastBackupTarget, lang === 'en' ? 'en' : 'ru')}
+              </>
+            ) : lang === 'en' ? (
+              'No backups yet'
+            ) : (
+              'Бэкапов ещё не было'
+            )}
+          </div>
           <button
             onClick={doBackup}
             disabled={!user || backupBusy}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-50"
+            className="ml-auto shrink-0 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-50"
           >
             {backupBusy ? t('backup.doing') : t('set.backupNow')}
           </button>
-          {backupMsg && (
-            <span className="text-sm text-neutral-500 dark:text-neutral-400">{backupMsg}</span>
-          )}
         </div>
+        {backupMsg && (
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">{backupMsg}</span>
+        )}
+
+        {/* Папка для бэкапов на ПК (только веб с поддержкой File System Access API). */}
+        {canPickDir && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 text-sm text-neutral-500 dark:text-neutral-400">
+              {lang === 'en' ? 'PC backup folder: ' : 'Папка для бэкапов на ПК: '}
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">
+                {dirName || (lang === 'en' ? 'not selected' : 'не выбрана')}
+              </span>
+            </div>
+            <button
+              onClick={choosePcDir}
+              className="shrink-0 rounded-lg border border-neutral-300 px-4 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              {dirName
+                ? lang === 'en'
+                  ? 'Change folder'
+                  : 'Сменить папку'
+                : lang === 'en'
+                  ? 'Choose folder'
+                  : 'Выбрать папку'}
+            </button>
+          </div>
+        )}
+
         <div className="mt-1 flex items-center justify-between gap-3">
           <p className="font-medium">🔁 {t('set.backupAuto')}</p>
           <button

@@ -13,6 +13,16 @@ import {
   type WaterDay,
   type WaterLog,
 } from '../lib/water'
+import Select from '../components/Select'
+import TimePicker from '../components/TimePicker'
+import {
+  loadNotifSettings,
+  saveNotifSettings,
+  rescheduleAll,
+  NOTIF_DEFAULTS,
+  WATER_EVERY_OPTIONS,
+  type NotifSettings,
+} from '../lib/notifications'
 
 const cardCls =
   'rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/50'
@@ -97,7 +107,7 @@ function GlassIcon({
 
 export default function WaterTracker() {
   const { user } = useAuth()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const today = todayStr()
 
   const [day, setDay] = useState<WaterDay | null>(null)
@@ -106,6 +116,9 @@ export default function WaterTracker() {
   const [selMl, setSelMl] = useState(250)
   const [goalEdit, setGoalEdit] = useState(false)
   const [goalDraft, setGoalDraft] = useState('')
+  // Настройки напоминаний пить воду (перенесены сюда из настроек планировщика).
+  const [notif, setNotif] = useState<NotifSettings>(NOTIF_DEFAULTS)
+  const [notifReady, setNotifReady] = useState(false)
   const [statMode, setStatMode] = useState<'week' | 'month'>('week')
   const [statOffset, setStatOffset] = useState(0)
 
@@ -151,6 +164,25 @@ export default function WaterTracker() {
       active = false
     }
   }, [user, today])
+
+  // Загрузка настроек напоминаний воды (для модалки ⚙️).
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    ;(async () => {
+      try {
+        const s = await loadNotifSettings(user.id)
+        if (active) setNotif(s)
+      } catch {
+        // оставляем значения по умолчанию
+      } finally {
+        if (active) setNotifReady(true)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [user])
 
   const drunk = day?.drunk ?? 0
   const goal = day?.goal ?? 2000
@@ -265,6 +297,19 @@ export default function WaterTracker() {
   const chooseMl = (ml: number) => {
     setSelMl(ml)
     if (user) void saveWaterPortion(user.id, ml)
+  }
+
+  // Сохраняем настройки уведомлений и сразу пересобираем расписание на устройстве.
+  const updateNotif = async (patch: Partial<NotifSettings>) => {
+    if (!user) return
+    const next = { ...notif, ...patch }
+    setNotif(next)
+    try {
+      await saveNotifSettings(user.id, next)
+      await rescheduleAll(user.id)
+    } catch {
+      // на вебе расписание не создаётся — это нормально
+    }
   }
 
   const saveGoal = async () => {
@@ -417,7 +462,7 @@ export default function WaterTracker() {
               onClick={() => setGoalEdit(false)}
             >
               <div
-                className="w-full max-w-xs rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900"
+                className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-900"
                 onClick={(e) => e.stopPropagation()}
               >
                 <p className="mb-3 text-base font-semibold">🎯 {t('water.dailyGoal')}</p>
@@ -438,6 +483,64 @@ export default function WaterTracker() {
                   />
                   <span className="text-sm text-neutral-400">ml</span>
                 </div>
+
+                {/* 💧 Напоминания пить воду (перенесено сюда из настроек планировщика). */}
+                <div className="mt-5 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">
+                      🔔 {lang === 'en' ? 'Water reminders' : 'Напоминания пить воду'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => updateNotif({ waterEnabled: !notif.waterEnabled })}
+                      disabled={!user || !notifReady}
+                      className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                        notif.waterEnabled
+                          ? 'bg-sky-500 text-white hover:bg-sky-400'
+                          : 'border border-neutral-300 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      {notif.waterEnabled ? t('set.on') : t('set.off')}
+                    </button>
+                  </div>
+                  {notif.waterEnabled && (
+                    <div className="mt-3 flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                          {t('notif.every')}
+                        </p>
+                        <Select
+                          className="w-fit"
+                          value={String(notif.waterEveryHours)}
+                          onChange={(v) => updateNotif({ waterEveryHours: Number(v) })}
+                          options={WATER_EVERY_OPTIONS.map((h) => ({
+                            value: String(h),
+                            label: t('notif.hours', { n: String(h) }),
+                          }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                          {t('notif.from')}
+                        </p>
+                        <TimePicker
+                          value={notif.waterFrom}
+                          onChange={(v) => updateNotif({ waterFrom: v })}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                          {t('notif.to')}
+                        </p>
+                        <TimePicker
+                          value={notif.waterTo}
+                          onChange={(v) => updateNotif({ waterTo: v })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-4 flex justify-end gap-2">
                   <button
                     type="button"
