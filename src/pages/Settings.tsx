@@ -197,10 +197,9 @@ export default function Settings() {
 
       {/* 🛡️ Бэкап данных одной кнопкой */}
       <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900/50">
-        <p className="font-medium">🛡️ {t('set.backup')}</p>
-
-        {/* Кнопка «Сделать бэкап» сверху (справа). */}
-        <div className="flex justify-end">
+        {/* Заголовок + кнопка «Сделать бэкап» в одну строку. */}
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-medium">🛡️ {t('set.backup')}</p>
           <button
             onClick={doBackup}
             disabled={!user || backupBusy}
